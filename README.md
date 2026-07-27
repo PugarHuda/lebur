@@ -388,3 +388,19 @@ cd packages/web && npm install && npm run dev
 
 Addresses come from `packages/web/.env.local`; `scripts/deploy-sepolia.ts` prints
 the block to paste. It is preconfigured for the live batch above.
+
+## Verified source
+
+| Contract | Verified |
+|---|---|
+| LeburBatch | [Blockscout](https://eth-sepolia.blockscout.com/address/0x04c5a38af74d9f40c444dcb90f5d66724998afbd#code) |
+| cUSDA | [Sourcify](https://sourcify.dev/server/repo-ui/11155111/0x9332437d2abdcca57143b96d6d1fce1ad51e7c35) |
+| cUSDB | [Sourcify](https://sourcify.dev/server/repo-ui/11155111/0x37e9f9e43c929722cc61475db3eb053575e85efd) |
+| lUSDA | [Sourcify](https://sourcify.dev/server/repo-ui/11155111/0x838204BC3D82B29E3697Bfe9A17662c57943e34F) |
+| lUSDB | [Sourcify](https://sourcify.dev/server/repo-ui/11155111/0x8A00F10b198f8cC9266d6E330b9792E395707CB7) |
+
+`LeburBatch` goes to Blockscout rather than Sourcify because its constructor takes
+the price ladder as an array: the `verify sourcify` task ignores
+`--constructor-args-path` (it resolves libraries only) and array arguments cannot
+be expressed positionally, so it can never be verified that way.
+`verify blockscout` honours the args module in `verify-args.js`.
