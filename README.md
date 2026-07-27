@@ -427,3 +427,28 @@ The two suites share one Nox node, so they also share a single ~3600s budget of
 `evm_increaseTime`: a `handleProof` is signed against the WALL clock while
 `evm_increaseTime` moves only the CHAIN clock, and the drift persists across
 files. Both suites therefore use a 60-second window and step just past it.
+
+### The batch, settled live
+
+Ran end to end on Sepolia 2026-07-27. Two sealed orders — bid 1000 lUSDA at tick
+2, ask 600 lUSDB at tick 1 — netted inside the TEE and settled through one
+`exchange_received` against the real Curve pool:
+
+| | |
+|---|---|
+| clearing tick | **2** (price 1.0005 coin0 per coin1) |
+| residual to the public pool | **399.7 lUSDA** / 0 lUSDB |
+| Curve leg | used — received **399.652082524006769831 lUSDB** |
+| `publicFootprint` | **399.7** — the total value that ever became public |
+
+Measured gas: `clear()` **2,074,408** for the whole encrypted ladder scan,
+`settle()` 950,092, `payout()` 572k each.
+
+**600 of the 1000 crossed internally and never touched the chain.** Only the
+399.7 residual did. Every order's size, side, limit and fill remain encrypted,
+and the pool saw a single trade rather than two counterparties.
+
+The numbers are also a check on the mechanism rather than just a log: a bid of
+1000 at tick 2 demands `1000 / 1.0005 ≈ 999.5` coin1, the ask supplies 600, so
+the residual is `≈ 399.5` coin1-equivalent — which is what cleared, and the tick
+the max-volume/min-imbalance rule should pick.
