@@ -404,3 +404,26 @@ the price ladder as an array: the `verify sourcify` task ignores
 `--constructor-args-path` (it resolves libraries only) and array arguments cannot
 be expressed positionally, so it can never be verified that way.
 `verify blockscout` honours the args module in `verify-args.js`.
+
+## Tests
+
+**9 passing** against the real Nox offchain stack:
+
+- the full round trip — sealed submit, encrypted ladder scan, gateway public
+  decrypt, Curve settlement, confidential payouts — with every trader's final
+  balance checked against the reference oracle to the wei
+- the degraded path: when the pool cannot meet the clearing price the Curve leg is
+  skipped, the residual is re-wrapped and limits are still honoured
+- seven guard tests: malformed ladders rejected at construction (empty, zero
+  price, flat, descending), clearing refused before the window closes, orders
+  refused after it, `payout` and `publicFootprint` refused before settlement, and
+  an empty book that still clears rather than trapping the batch in Open forever
+
+```bash
+cd packages/contracts && npx hardhat test   # needs Docker
+```
+
+The two suites share one Nox node, so they also share a single ~3600s budget of
+`evm_increaseTime`: a `handleProof` is signed against the WALL clock while
+`evm_increaseTime` moves only the CHAIN clock, and the drift persists across
+files. Both suites therefore use a 60-second window and step just past it.
