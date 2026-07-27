@@ -8,6 +8,3 @@ coverage/
 .next/
 next-env.d.ts
 *.tsbuildinfo
-# hardhat 3 + nox plugin leave these behind
-types/
-offchain-services.log

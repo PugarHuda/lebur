@@ -371,3 +371,20 @@ They cross 600 internally, which leaves a genuine residual for the public pool
 rather than a fully-netted batch that would never touch Curve. Both orders come
 from one address because the mechanism keys on orders, not identities — worth
 stating plainly rather than implying two independent traders.
+
+## Frontend
+
+`packages/web` — a Next.js trader UI for a live batch. It shows the sealed order
+count, the price ladder, and the phase; it places a sealed order end to end
+(mint → wrap → the dust wrap that keeps your side private → two gateway
+encryptions → `submitOrder`); and once the window closes **anyone** can clear the
+batch from the page. After settlement it reports the clearing price, the residual
+that reached the public pool, and the `publicFootprint` — the total value that
+ever became visible, set against the sealed orders whose sizes never do.
+
+```bash
+cd packages/web && npm install && npm run dev
+```
+
+Addresses come from `packages/web/.env.local`; `scripts/deploy-sepolia.ts` prints
+the block to paste. It is preconfigured for the live batch above.

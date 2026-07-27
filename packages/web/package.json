@@ -1,0 +1,19 @@
+{
+  "name": "@lebur/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": { "dev": "next dev", "build": "next build", "start": "next start" },
+  "dependencies": {
+    "@iexec-nox/handle": "0.1.0-beta.13",
+    "ethers": "^6",
+    "next": "^15",
+    "react": "^19",
+    "react-dom": "^19",
+    "viem": "^2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "@types/react": "^19",
+    "typescript": "^5"
+  }
+}
