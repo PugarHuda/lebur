@@ -29,7 +29,7 @@ export default defineConfig({
     sepolia: {
       type: 'http',
       chainType: 'op',
-      url: process.env.SEPOLIA_RPC_URL ?? 'https://sepolia.drpc.org',
+      url: process.env.SEPOLIA_RPC_URL ?? "https://ethereum-sepolia-rpc.publicnode.com",
       accounts: process.env.DEPLOYER_PRIVATE_KEY ? [process.env.DEPLOYER_PRIVATE_KEY] : [],
       // Sepolia base fee sits well under 1 gwei and Hardhat's defaults overpay ~4x.
       // A clear() at T=4/N=3 is ~200 encrypted ops, so the multiplier matters.
@@ -37,8 +37,13 @@ export default defineConfig({
       // @ts-expect-error Hardhat 3 does not declare the EIP-1559 overrides on
       // HttpNetworkUserConfig yet, but the runtime honours them. If this line ever
       // reports "unused @ts-expect-error", the typing was fixed and it can go.
-      maxPriorityFeePerGas: 1_000_000_000n, // 1 gwei
-      maxFeePerGas: 3_000_000_000n,         // 3 gwei ceiling
+      // 1 gwei was still ~doubling the bill: against a ~1.06 gwei base fee the
+      // tip IS the other half of every transaction. Sepolia is not congested, so
+      // the tip only has to be non-zero to get included. On a ~22M-gas live run
+      // this is the difference between ~0.023 ETH and ~0.044 ETH — i.e. between
+      // fitting the budget and not. Raise it if transactions stop landing.
+      maxPriorityFeePerGas: 20_000_000n, // 0.02 gwei
+      maxFeePerGas: 3_000_000_000n,      // 3 gwei ceiling (base can spike)
       // live Nox on Ethereum Sepolia — verified 2026-07-22
       nox: {
         noxComputeAddress: '0x24Ef36Ec5b626D7DCD09a98F3083c2758F0F77bF',

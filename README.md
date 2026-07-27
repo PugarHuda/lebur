@@ -334,3 +334,40 @@ pre-existing open-mint 18dp tokens exist at all (bFRAX `0xf4E7644d…`, USDEToke
 `0xe228BEC1…`, K1 `0x8BCb988f…`, DAI `0x2EF287cd…`) and no pool pairs any two of
 them. Reusing those tokens still saves the 1,065k of faucet deploys, but the
 pool must be our own — which is what the Curve research in this README predicted.
+
+## Live on Ethereum Sepolia
+
+Deployed and exercised 2026-07-27. Every address below is real, and the Curve
+pool is the project's own, deployed through the **unmodified** upstream
+StableSwap-NG factory:
+
+| Contract | Address |
+|---|---|
+| lUSDA (faucet ERC-20) | `0x838204BC3D82B29E3697Bfe9A17662c57943e34F` |
+| lUSDB (faucet ERC-20) | `0x8A00F10b198f8cC9266d6E330b9792E395707CB7` |
+| **Curve StableSwap-NG pool** | `0x29f2087bc6489e9FC9f35CA34132Fca9158de7A0` |
+| cUSDA (ERC-7984 wrapper) | `0x9332437d2abdcca57143b96d6d1fce1ad51e7c35` |
+| cUSDB (ERC-7984 wrapper) | `0x37e9f9e43c929722cc61475db3eb053575e85efd` |
+| **LeburBatch** | `0x04c5a38af74d9f40c444dcb90f5d66724998afbd` |
+| StableSwap-NG factory (upstream, unmodified) | `0xfb37b8D939FFa77114005e61CFc2e543d6F49A81` |
+
+Measured live gas: `deploy_plain_pool` **5,357,051** (the fork rehearsal
+predicted 5,357,063 — accurate to 12 gas), `add_liquidity` 250,801,
+ConfidentialToken 1,930,818 each, LeburBatch 3,642,265, `submitOrder`
+**761,861** and **744,749**.
+
+Pool seeded with 100,000 of each coin; `get_dy(0, 1, 1e18) = 999899950253733814`,
+i.e. ~1:1 at the peg — the flat curve this design settles against.
+
+### The live batch
+
+Two sealed orders, sizes and limits encrypted end to end through the live Nox
+gateway:
+
+- **bid** 1000 lUSDA, limit tick 2 (1.0005)
+- **ask** 600 lUSDB, limit tick 1 (1.0)
+
+They cross 600 internally, which leaves a genuine residual for the public pool
+rather than a fully-netted batch that would never touch Curve. Both orders come
+from one address because the mechanism keys on orders, not identities — worth
+stating plainly rather than implying two independent traders.

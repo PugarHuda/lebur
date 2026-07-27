@@ -151,7 +151,13 @@ export async function submitOrder(o: OrderOpts) {
   return id;
 }
 
-if (import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, '/')}`) {
+// Run when invoked directly, whether that is `node scripts/submit-order.ts` or
+// `npx hardhat run scripts/submit-order.ts`. Comparing import.meta.url against
+// process.argv[1] does NOT work under `hardhat run`: argv[1] is Hardhat's own
+// entry point, so the guard silently failed, submitOrder() was never called, and
+// the script exited 0 having done nothing at all.
+const selfName = import.meta.url.split('/').pop()!;
+if (process.argv.some((a) => a?.replace(/\\/g, '/').endsWith(selfName))) {
   submitOrder({
     key: (process.env.TRADER_PRIVATE_KEY ?? env('DEPLOYER_PRIVATE_KEY')) as `0x${string}`,
     batch: env('BATCH_ADDRESS') as `0x${string}`,
