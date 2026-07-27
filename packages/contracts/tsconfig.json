@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    // Hardhat 3 scripts import each other by their real ".ts" path at runtime.
+    "allowImportingTsExtensions": true,
+    // The reference oracle is plain .mjs on purpose (it must run on bare `node` with
+    // no toolchain). Let TS infer its types from the source instead of maintaining a
+    // hand-written .d.mts that could drift from it.
+    "allowJs": true,
+    "checkJs": false,
+    "resolveJsonModule": true,
+    "types": ["node"]
+  },
+  "include": ["scripts/**/*.ts", "test/**/*.ts", "hardhat.config.ts"],
+  "exclude": ["node_modules"]
+}
