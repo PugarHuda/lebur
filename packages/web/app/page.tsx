@@ -35,29 +35,56 @@ export default function Home() {
       return;
     }
     try {
-      const read = (functionName: any, args?: any[]) =>
-        pub.readContract({ address: ADDRESSES.batch, abi: batchAbi, functionName, args } as any);
-      const phase = Number(await read('phase'));
-      const n = Number(await read('tickCount'));
-      const ladder: bigint[] = [];
-      for (let i = 0; i < n; i++) ladder.push((await read('ladder', [BigInt(i)])) as bigint);
-      const next: Batch = {
-        phase,
-        orders: (await read('orderCount')) as bigint,
-        deadline: Number(await read('submitDeadline')),
-        ladder,
-      };
+      // Batch through Multicall3, which is already deployed on Sepolia and known to
+      // viem — no contract change, and it works against batches already live. The
+      // sequential version issued N+6 eth_calls per refresh, which is both slow and
+      // how this project got rate-limited by a public RPC provider mid-deploy.
+      const base = { address: ADDRESSES.batch, abi: batchAbi } as const;
+      const [phaseRaw, tickCount, orders, deadline] = await pub.multicall({
+        contracts: [
+          { ...base, functionName: 'phase' },
+          { ...base, functionName: 'tickCount' },
+          { ...base, functionName: 'orderCount' },
+          { ...base, functionName: 'submitDeadline' },
+        ],
+        allowFailure: false,
+      });
+      const phase = Number(phaseRaw);
+      const ladder = (await pub.multicall({
+        contracts: Array.from({ length: Number(tickCount) }, (_, i) => ({
+          ...base, functionName: 'ladder' as const, args: [BigInt(i)],
+        })),
+        allowFailure: false,
+      })) as bigint[];
+
+      const next: Batch = { phase, orders: orders as bigint, deadline: Number(deadline), ladder };
+
       if (phase >= 1) {
-        next.tick = (await read('clearingTickRevealed')) as bigint;
-        next.price = (await read('clearingPrice')) as bigint;
-        next.resid0 = (await read('residual0Revealed')) as bigint;
-        next.resid1 = (await read('residual1Revealed')) as bigint;
-        next.poolUsed = (await read('poolUsed')) as boolean;
-        next.poolOut = (await read('poolOut')) as bigint;
+        const [tick, price, resid0, resid1, poolUsed, poolOut] = await pub.multicall({
+          contracts: [
+            { ...base, functionName: 'clearingTickRevealed' },
+            { ...base, functionName: 'clearingPrice' },
+            { ...base, functionName: 'residual0Revealed' },
+            { ...base, functionName: 'residual1Revealed' },
+            { ...base, functionName: 'poolUsed' },
+            { ...base, functionName: 'poolOut' },
+          ],
+          allowFailure: false,
+        });
+        Object.assign(next, {
+          tick: tick as bigint, price: price as bigint,
+          resid0: resid0 as bigint, resid1: resid1 as bigint,
+          poolUsed: poolUsed as boolean, poolOut: poolOut as bigint,
+        });
       }
       // Reverts with WrongPhase until Settled — reading it earlier would surface
-      // as a page-wide error on a perfectly healthy batch.
-      if (phase >= 2) next.footprint = (await read('publicFootprint')) as bigint;
+      // as a page-wide error on a perfectly healthy batch. Kept out of the batched
+      // calls above for the same reason: allowFailure:false would fail them all.
+      if (phase >= 2) {
+        next.footprint = (await pub.readContract({
+          ...base, functionName: 'publicFootprint',
+        })) as bigint;
+      }
       setB(next);
       setError('');
     } catch (e) {
