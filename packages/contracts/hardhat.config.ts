@@ -8,7 +8,15 @@ try { process.loadEnvFile(new URL('.env', import.meta.url)); } catch {}
 
 export default defineConfig({
   plugins: [hardhatToolboxViemPlugin, noxPlugin],
-  solidity: '0.8.35',
+  // Optimizer ON with runs=1: every contract here is deployed once and called a
+  // handful of times, and the dominant runtime cost is Nox precompile ops, which the
+  // optimizer cannot touch. Deploy size is therefore the only lever, and runs=1 is
+  // what minimises it. Unoptimized, the four deployments alone were ~19M gas — more
+  // than the whole Sepolia budget. No viaIR: same pipeline as the validated build.
+  solidity: {
+    version: '0.8.35',
+    settings: { optimizer: { enabled: true, runs: 1 } },
+  },
   networks: {
     // `hardhat test` boots the whole Nox offchain stack (KMS, gateway, ingestor,
     // NATS, MinIO, Runner) in Docker and etches NoxCompute via hardhat_setCode.

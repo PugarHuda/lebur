@@ -303,3 +303,34 @@ and Penumbra and Renegade run sealed order flow in ZK. What is specific here is 
 ladder scan, an argmax carrying a proper max-volume/min-imbalance tie-break, and
 pro-rata fills — rather than a netting pass that reveals one aggregate. And the
 residual settles against an unmodified production AMM, not a bespoke venue.
+
+## Cost of going live, measured (not estimated)
+
+The whole deploy sequence was rehearsed against a **forked Sepolia** (real Curve
+factory, real NoxCompute state) under anvil, so these are executed gas numbers
+rather than guesses:
+
+| Step | Gas |
+|---|---|
+| FaucetERC20 × 2 | 1,065k |
+| **`deploy_plain_pool`** (Curve StableSwap-NG) | **5,357k** |
+| mint / approve / `add_liquidity` seeding | 481k |
+| ConfidentialToken × 2 | 3,862k |
+| **LeburBatch** | **3,642k** |
+| trader setup (mint/approve/wrap/setOperator, both sides) | 703k |
+| `clear()` calibration (n=0) | 1,589k |
+| **total rehearsed** | **16,698k ≈ 0.0177 ETH @ 1.06 gwei** |
+
+Add the real auction on top — `submitOrder` ~850k each, `clear()` at T=4/N=3
+2.92M, `settle` 939k, `payout` ~680k each — and a live end-to-end run is
+**~0.022–0.024 ETH**. The pool deploy alone is a third of it.
+
+`get_dy(0,1,1e18) = 999899950253733814` on the freshly seeded pool, i.e. ~1:1 at
+the peg, exactly as the flat-curve framing above predicts.
+
+**No existing pool can be reused.** All 179 StableSwap-NG pools on Sepolia were
+scanned for a pair of 18-decimal, open-`mint()` coins: zero matches. Only four
+pre-existing open-mint 18dp tokens exist at all (bFRAX `0xf4E7644d…`, USDEToken
+`0xe228BEC1…`, K1 `0x8BCb988f…`, DAI `0x2EF287cd…`) and no pool pairs any two of
+them. Reusing those tokens still saves the 1,065k of faucet deploys, but the
+pool must be our own — which is what the Curve research in this README predicted.
