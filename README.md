@@ -102,6 +102,8 @@ ERC-20 the pool can see are *the same operation*. No separate decrypt-and-trust 
 
 ```
 reference/lebur-reference.mjs      the specification. read this first
+packages/snap/                     MetaMask Snap: seal an order in-sandbox
+packages/web/                      Next.js trader UI
 packages/contracts/
   contracts/LeburBatch.sol         the auction
   contracts/ConfidentialToken.sol  ERC-7984 wrapper over a plain ERC-20
@@ -471,3 +473,28 @@ every one of them and the phase guards make them unreadable meanwhile — but th
 revealed plaintext mirrors are, because those are public and a stale clearing
 price would misreport an auction that has not happened yet. The e2e test asserts
 exactly that after a real settlement.
+
+## Sealing the order inside your wallet
+
+`packages/snap` is a MetaMask Snap that encrypts an order **inside the SES
+sandbox**: RSA keygen, ECDH/HKDF/AES-GCM and the gateway call all happen there,
+so the size and side never enter a web page's JavaScript.
+
+The viewing key is derived from the user's SRP via `snap_getEntropy`, not from
+their EOA — deliberately, because `eth_signTypedData_v4` is on MetaMask's
+`BLOCKED_RPC_METHODS` for snaps and an EOA-held viewing key is one a briber can
+ask you to sign with. The Snap identity is granted the Nox viewer role instead,
+so you can read your own escrow and cannot prove it to anyone.
+
+The page falls back to encrypting via the gateway itself when the Snap is absent.
+That still seals the order on-chain, but the EOA then holds the viewing role and
+**can** prove what you traded — so the UI says which mode is active rather than
+choosing silently.
+
+```bash
+cd packages/snap && npm install && npm run build && npm run serve   # localhost:8080
+```
+
+Builds clean and evaluates under SES. **Not yet loaded in MetaMask Flask** — the
+bundle passing `mm-snap eval` is not the same as a wallet round trip, and that
+distinction is worth keeping until someone has actually done it.

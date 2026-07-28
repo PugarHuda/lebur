@@ -9,6 +9,7 @@ import {
   connectWallet, explorerAddr, explorerTx, pub, tx,
 } from '../lib/lebur';
 import { encryptOrder } from '../lib/nox';
+import { connectSnap, getNoxAddress, encryptOrderInSnap } from '../lib/snap';
 
 type Batch = {
   phase: number; orders: bigint; deadline: number; ladder: bigint[];
@@ -25,6 +26,7 @@ export default function Home() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [hashes, setHashes] = useState<{ label: string; hash: `0x${string}` }[]>([]);
+  const [sealMode, setSealMode] = useState<'snap' | 'page'>();
 
   const track = (label: string) => (hash: `0x${string}`) =>
     setHashes((h) => [...h, { label, hash }]);
@@ -140,13 +142,36 @@ export default function Home() {
     await send(ADDRESSES.cToken0, cTokenAbi, 'setOperator', [ADDRESSES.batch, Number(until)], 'setOperator cUSDA');
     await send(ADDRESSES.cToken1, cTokenAbi, 'setOperator', [ADDRESSES.batch, Number(until)], 'setOperator cUSDB');
 
-    setStatus('5/5 encrypting size and limit in the gateway TEE…');
-    const code = (isBid ? 1n : 0n) * SIDE_STRIDE + BigInt(tick);
-    const { amt: eAmt, cod } = await encryptOrder(w, amt, code, ADDRESSES.batch);
+    // Prefer the Snap: encryption runs inside MetaMask's SES sandbox, so the size
+    // and side never enter this page's JavaScript at all, and the viewing key is
+    // SRP-derived and cannot sign for anyone else. Falling back to page-side
+    // encryption still seals the order on-chain, but the viewing key is then the
+    // EOA — which CAN be used to prove what you traded. Never chosen silently.
+    let handles: { amountHandle: `0x${string}`; amountProof: `0x${string}`;
+                   codeHandle: `0x${string}`; codeProof: `0x${string}` };
+    let viewer = me;
+    let mode: 'snap' | 'page' = 'page';
+    try {
+      await connectSnap();
+      viewer = (await getNoxAddress()).address;
+      setStatus('5/5 encrypting size and limit inside the MetaMask Snap…');
+      handles = await encryptOrderInSnap(amt, isBid, Number(tick), ADDRESSES.batch);
+      mode = 'snap';
+    } catch {
+      setStatus('5/5 Snap unavailable — encrypting on this page via the gateway TEE…');
+      const code = (isBid ? 1n : 0n) * SIDE_STRIDE + BigInt(tick);
+      const { amt: eAmt, cod } = await encryptOrder(w, amt, code, ADDRESSES.batch);
+      handles = {
+        amountHandle: eAmt.handle as `0x${string}`, amountProof: eAmt.handleProof as `0x${string}`,
+        codeHandle: cod.handle as `0x${string}`, codeProof: cod.handleProof as `0x${string}`,
+      };
+    }
+    setSealMode(mode);
 
     setStatus('submitting sealed order — calldata carries handles, not your numbers…');
     await send(ADDRESSES.batch, batchAbi, 'submitOrder',
-      [eAmt.handle, eAmt.handleProof, cod.handle, cod.handleProof, me], 'submitOrder');
+      [handles.amountHandle, handles.amountProof, handles.codeHandle, handles.codeProof, viewer],
+      'submitOrder');
     setStatus('sealed order placed. Nobody can see its size, side or limit.');
     await refresh();
   }
@@ -257,6 +282,17 @@ export default function Home() {
           padding: '8px 12px', borderRadius: 6, fontSize: 14,
           background: '#fdecea', border: '1px solid #f5aca6',
         }}>{error}</p>
+      )}
+      {sealMode && (
+        <p style={{
+          marginTop: 8, padding: '8px 12px', borderRadius: 6, fontSize: 14,
+          background: sealMode === 'snap' ? '#e7f6ec' : '#fff4e5',
+          border: `1px solid ${sealMode === 'snap' ? '#a3d9b1' : '#f0c987'}`,
+        }}>
+          {sealMode === 'snap'
+            ? '🔒 Sealed inside the MetaMask Snap: your size and side never entered this page, and the viewing key is derived from your SRP — you can read your own order, and cannot prove it to anyone.'
+            : '⚠️ Snap not installed — the order was encrypted by this page and your EOA holds the viewing role. It is still sealed on-chain, but that key CAN be used to prove what you traded. Install the Snap for the full guarantee.'}
+        </p>
       )}
       {hashes.length > 0 && (
         <ul style={{ fontSize: 13, paddingLeft: 18 }}>

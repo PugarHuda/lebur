@@ -1,0 +1,31 @@
+{
+  "version": "0.1.0",
+  "description": "Lebur — seal your order inside your wallet. Size, side and limit are encrypted in MetaMask's sandbox; plaintext never reaches a web page.",
+  "proposedName": "Lebur Confidential",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PugarHuda/lebur.git"
+  },
+  "source": {
+    "shasum": "c95ZVOasZQS0Bl5DdNT597jqZsTyXzabzJenZzoBP50=",
+    "location": {
+      "npm": {
+        "filePath": "dist/bundle.js",
+        "iconPath": "images/icon.svg",
+        "packageName": "@lebur/snap",
+        "registry": "https://registry.npmjs.org/"
+      }
+    }
+  },
+  "initialPermissions": {
+    "endowment:rpc": {
+      "dapps": true
+    },
+    "endowment:network-access": {},
+    "endowment:ethereum-provider": {},
+    "snap_getEntropy": {},
+    "snap_dialog": {}
+  },
+  "platformVersion": "6.24.0",
+  "manifestVersion": "0.1"
+}
