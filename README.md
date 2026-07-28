@@ -391,6 +391,25 @@ cd packages/web && npm install && npm run dev
 Addresses come from `packages/web/.env.local`; `scripts/deploy-sepolia.ts` prints
 the block to paste. It is preconfigured for the live batch above.
 
+## What is deployed vs what is in this branch
+
+The live batch above runs the contract as of commit **`81d020a`**, and the
+Blockscout verification matches that deployed bytecode. `main` has moved on: the
+current source is 12,416 runtime bytes against 11,834 on-chain, so they are
+deliberately **not** the same code.
+
+Added after the batch was deployed, and therefore in this repo but not at that
+address:
+
+- `startNewBatch` — one deployment runs many auctions, with the `paidCount`
+  guard and the bounded submit window
+- `epoch` / `paidCount` accounting
+
+The settled batch is unaffected: the auction mechanism, the encrypted ladder
+scan and the Curve settlement are identical in both revisions. Redeploying to
+close the gap costs ~3.6M gas and the deployer holds 0.0018 ETH, so this README
+names the revision rather than implying the address runs `main`.
+
 ## Verified source
 
 | Contract | Verified |
