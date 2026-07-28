@@ -407,14 +407,14 @@ be expressed positionally, so it can never be verified that way.
 
 ## Tests
 
-**9 passing** against the real Nox offchain stack:
+**10 passing** against the real Nox offchain stack:
 
 - the full round trip — sealed submit, encrypted ladder scan, gateway public
   decrypt, Curve settlement, confidential payouts — with every trader's final
   balance checked against the reference oracle to the wei
 - the degraded path: when the pool cannot meet the clearing price the Curve leg is
   skipped, the residual is re-wrapped and limits are still honoured
-- seven guard tests: malformed ladders rejected at construction (empty, zero
+- eight guard tests: malformed ladders rejected at construction (empty, zero
   price, flat, descending), clearing refused before the window closes, orders
   refused after it, `payout` and `publicFootprint` refused before settlement, and
   an empty book that still clears rather than trapping the batch in Open forever
@@ -452,3 +452,22 @@ The numbers are also a check on the mechanism rather than just a log: a bid of
 1000 at tick 2 demands `1000 / 1.0005 ≈ 999.5` coin1, the ask supplies 600, so
 the residual is `≈ 399.5` coin1-equivalent — which is what cleared, and the tick
 the max-volume/min-imbalance rule should pick.
+
+## One deployment, many auctions
+
+`startNewBatch(deadline)` resets a settled batch for a new epoch, so the batcher
+does not have to be redeployed per auction — each redeploy is ~3.6M gas.
+
+It is permissionless like every other step: there is no operator here, and adding
+one just to gate a reset would reintroduce the single party this design does
+without. Two things make that safe. A reset requires `paidCount ==
+orders.length`, because clearing the order book while any order is unpaid would
+destroy the only record of that trader's escrow. And the new window is bounded to
+[5 minutes, 30 days], so a caller can neither open one that closes instantly nor
+park the deployment for a year.
+
+The encrypted aggregates are deliberately *not* cleared — `clear()` overwrites
+every one of them and the phase guards make them unreadable meanwhile — but the
+revealed plaintext mirrors are, because those are public and a stale clearing
+price would misreport an auction that has not happened yet. The e2e test asserts
+exactly that after a real settlement.

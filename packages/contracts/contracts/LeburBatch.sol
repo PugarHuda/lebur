@@ -79,6 +79,8 @@ contract LeburBatch is ReentrancyGuard {
     ///      encryptions instead of three (the gateway round trip is ~2.3s measured):
     ///      code = side * MAX_TICKS + limitTick, side 1 = bid, anything else = ask.
     uint256 internal constant SIDE_STRIDE = MAX_TICKS;
+    uint64 internal constant MIN_WINDOW = 5 minutes;
+    uint64 internal constant MAX_WINDOW = 30 days;
 
     enum Phase { Open, Cleared, Settled }
 
@@ -111,7 +113,16 @@ contract LeburBatch is ReentrancyGuard {
     ICurvePool public immutable pool;                // real, unmodified Curve pool
     int128 public immutable i0;                      // token0's index in the pool
     int128 public immutable i1;                      // token1's index in the pool
-    uint64 public immutable submitDeadline;
+    // Not immutable: a settled batch can be reset for a new epoch (startNewBatch),
+    // so one deployment serves many auctions instead of one.
+    uint64 public submitDeadline;
+    /// Which auction this is. Bumped by startNewBatch so an indexer or a frontend
+    /// can tell an old batch's revealed values from the current one's.
+    uint256 public epoch;
+    /// How many orders of the CURRENT batch have been paid. A batch may only be
+    /// reset once this reaches orders.length — otherwise clearing the order array
+    /// would strand the escrow of anyone not yet paid, with no way to recover it.
+    uint256 public paidCount;
 
     /// @notice The PUBLIC price ladder, coin0 per coin1, WAD-scaled, strictly
     ///         increasing. Public on purpose: the ladder is the auction's grammar,
@@ -172,6 +183,7 @@ contract LeburBatch is ReentrancyGuard {
     event Cleared();
     event Settled(uint256 clearingTick, uint256 residual0, uint256 residual1, uint256 poolOut, bool poolUsed);
     event PaidOut(uint256 indexed id, address indexed trader);
+    event BatchStarted(uint256 indexed epoch, uint64 submitDeadline);
 
     error WrongPhase();
     error DeadlinePassed();
@@ -584,6 +596,40 @@ contract LeburBatch is ReentrancyGuard {
         Nox.allowThis(denS);
     }
 
+    /// @notice Reset a fully-paid batch so this deployment can run another auction.
+    /// @dev Permissionless, like every other step here — there is no operator to
+    ///      gate it on, and gating it would reintroduce the single party this
+    ///      design deliberately does without.
+    ///
+    ///      The paidCount check is the safety property: clearing `orders` while any
+    ///      order is unpaid would destroy the only record of that trader's escrow.
+    ///      The encrypted aggregates are not cleared because `clear()` overwrites
+    ///      every one of them, and the phase guards make them unreadable meanwhile;
+    ///      the REVEALED plaintext mirrors are cleared, because those are public and
+    ///      a stale one would misreport the new batch.
+    function startNewBatch(uint64 newDeadline) external {
+        if (phase != Phase.Settled) revert WrongPhase();
+        require(paidCount == orders.length, "unpaid orders remain");
+        // Bounded so a caller can neither open a window that closes instantly nor
+        // one that parks the deployment for years.
+        require(
+            newDeadline >= block.timestamp + MIN_WINDOW && newDeadline <= block.timestamp + MAX_WINDOW,
+            "deadline out of range"
+        );
+
+        delete orders;
+        paidCount = 0;
+        clearingTickRevealed = 0;
+        clearingPrice = 0;
+        residual0Revealed = 0;
+        residual1Revealed = 0;
+        poolOut = 0;
+        poolUsed = false;
+        submitDeadline = newDeadline;
+        phase = Phase.Open;
+        emit BatchStarted(++epoch, newDeadline);
+    }
+
     // ── payout (encrypted) ────────────────────────────────────────────────────
 
     /// @notice Pay one order its pro-rata fill plus whatever escrow it did not spend,
@@ -605,6 +651,7 @@ contract LeburBatch is ReentrancyGuard {
         Order storage o = orders[id];
         if (o.paid) return;
         o.paid = true;
+        ++paidCount;
 
         euint256 qEb = Nox.select(Nox.ge(o.limitTick, bestTick), o.qBuy, EZERO);
         euint256 qEs = Nox.select(Nox.le(o.limitTick, bestTick), o.qSell, EZERO);

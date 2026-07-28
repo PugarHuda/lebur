@@ -112,4 +112,19 @@ describe('LeburBatch guards', () => {
     assert.equal(Number(await batch.read.phase()), 1, 'phase == Cleared');
     assert.equal(Number(await batch.read.orderCount()), 0);
   });
+
+  // Resetting is only meaningful on a settled, fully-paid batch, so the real
+  // multi-batch test lives in batch.e2e.test.ts where such a batch exists. What
+  // belongs here is the guard that stops a reset before that point — clearing
+  // `orders` early would destroy the only record of an unpaid trader's escrow.
+  it('refuses to reset a batch that has not settled', async () => {
+    const { deploy, conn, pub } = await fixture();
+    const batch = await deploy([...LADDER]);
+    await travel(conn);
+    await batch.write.clear();
+    assert.equal(Number(await batch.read.phase()), 1, 'Cleared, not Settled');
+
+    const soon = BigInt((await pub.getBlock()).timestamp) + 600n;
+    await assert.rejects(() => batch.write.startNewBatch([soon]), /WrongPhase/);
+  });
 });

@@ -217,6 +217,34 @@ describe('Lebur confidential uniform-price batch auction', () => {
     // exactly whole — a losing bid is not a donation.
     assert.equal(oracle.p.rows[1].coin0Out, tok(500));
     assert.equal(oracle.p.rows[1].coin1Out, 0n);
+
+    // ── the deployment is reusable ───────────────────────────────────────────
+    // Everything above is one auction. A batcher that can only ever run a single
+    // batch would have to be redeployed per epoch, and each redeploy is ~3.6M gas.
+    assert.equal(await batch.read.paidCount(), BigInt(BOOK.length), 'every order paid');
+
+    const nowTs = (await pub.getBlock()).timestamp;
+    await assert.rejects(
+      () => batch.write.startNewBatch([nowTs + 10n]),
+      /deadline out of range/,
+      'a window that closes almost immediately is refused',
+    );
+    await assert.rejects(
+      () => batch.write.startNewBatch([nowTs + 60n * 60n * 24n * 365n]),
+      /deadline out of range/,
+      'a window that parks the deployment for a year is refused',
+    );
+
+    await batch.write.startNewBatch([nowTs + 600n]);
+    assert.equal(Number(await batch.read.phase()), 0, 'back to Open');
+    assert.equal(await batch.read.epoch(), 1n, 'epoch bumped');
+    assert.equal(Number(await batch.read.orderCount()), 0, 'order book cleared');
+    assert.equal(await batch.read.paidCount(), 0n);
+    // The public mirrors of the previous batch must not leak into the new one —
+    // a stale clearing price would misreport an auction that has not happened yet.
+    assert.equal(await batch.read.clearingTickRevealed(), 0n);
+    assert.equal(await batch.read.residual0Revealed(), 0n);
+    assert.equal(await batch.read.poolUsed(), false);
   });
 
   it('skips the Curve leg when the pool cannot meet the clearing price, and refunds', async () => {
