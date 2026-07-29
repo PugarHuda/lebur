@@ -13,11 +13,24 @@ import { panel, text, heading, copyable, divider } from '@metamask/snaps-sdk';
 import { createEthersHandleClient } from '@iexec-nox/handle';
 import { Wallet } from 'ethers';
 
-/// Side and limit tick ride together in one euint16 as `side * SIDE_STRIDE + tick`,
-/// so an order costs two gateway encryptions rather than three. Must match
-/// LeburBatch.SIDE_STRIDE.
-const SIDE_STRIDE = 8n;
-
+/// THE SNAP DOES NOT ENCRYPT ORDERS, AND CANNOT.
+///
+/// It used to, and that was broken — badly, and invisibly, because the Snap had
+/// never been loaded in a wallet. `Nox.fromExternal` checks that the address which
+/// OWNS the input proof is the direct `msg.sender` of the transaction consuming
+/// it. An order encrypted by this snap-derived identity and then submitted by the
+/// user's EOA fails that check: `InvalidProof`, every time. The page preferred the
+/// Snap path when it was installed, so installing the Snap turned a working
+/// trader into a broken one — the exact opposite of what it advertised.
+///
+/// So encryption stays with the EOA, which is the only key that can satisfy
+/// `fromExternal`, and this snap owns the VIEWING key instead. That is the half
+/// that actually carries the coercion-resistance property: the trader can read
+/// their own order, and cannot sign anything that proves it to a briber, because
+/// the key is SRP-derived and never leaves the sandbox. What is genuinely lost is
+/// "the size never enters page JavaScript" — that was an over-claim, and
+/// `fromExternal`'s binding rules it out for any wallet-signed transaction.
+///
 /// Snap-owned signer derived deterministically from the user's SRP. This address
 /// is the trader's Nox identity; the batch grants it the viewer role.
 async function snapSigner() {
@@ -37,22 +50,6 @@ async function client() {
 
 export const onRpcRequest: OnRpcRequestHandler = async ({ request }) => {
   switch (request.method) {
-    // Encrypt an order in-sandbox -> the two {handle, proof} pairs the page submits
-    // to LeburBatch.submitOrder. The amount and the packed side+tick never leave here.
-    case 'encryptOrder': {
-      const { amount, isBid, tick, batch } = request.params as {
-        amount: string; isBid: boolean; tick: number; batch: `0x${string}`;
-      };
-      const c = await client();
-      const code = (isBid ? 1n : 0n) * SIDE_STRIDE + BigInt(tick);
-      const amt = await c.encryptInput(BigInt(amount), 'uint256', batch);
-      const cod = await c.encryptInput(code, 'uint16', batch);
-      return {
-        amountHandle: String(amt.handle), amountProof: String(amt.handleProof),
-        codeHandle: String(cod.handle), codeProof: String(cod.handleProof),
-      } as Json;
-    }
-
     // Decrypt the trader's OWN escrow and show it inside MetaMask. They learn their
     // own number but cannot prove it to anyone — proving would mean exposing an
     // SRP-derived key.
