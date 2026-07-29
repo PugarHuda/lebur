@@ -1,0 +1,163 @@
+/* Design tokens. Every colour, space and radius in the app resolves here, so a
+   component never carries a raw hex — which is what the old inline-styled pages
+   did, and why nothing looked like anything else. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+:root {
+  --bg: #020617;
+  --surface: #0f172a;
+  --surface-2: #1a1e2f;
+  --border: #263449;
+  --border-strong: #334155;
+  --fg: #f8fafc;
+  --fg-muted: #94a3b8;
+  --fg-dim: #64748b;
+
+  /* Lebur's accent is amber: this is an auction, not a donation, and amber reads
+     as heat and urgency where Lirih's green reads as growth. Sibling projects,
+     one visual language, two temperatures. */
+  --accent: #f59e0b;
+  --accent-dim: #b45309;
+  --accent-wash: rgba(245, 158, 11, 0.1);
+  --warn: #38bdf8;
+  --warn-wash: rgba(56, 189, 248, 0.1);
+  --danger: #ef4444;
+  --danger-wash: rgba(239, 68, 68, 0.1);
+
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  /* Addresses, handles and token amounts are all fixed-width data. Proportional
+     digits make two balances impossible to compare at a glance. */
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
+  --s5: 24px; --s6: 32px; --s7: 48px; --s8: 64px;
+  --r: 10px; --r-lg: 16px;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  /* Not pure #000: it smears on OLED and kills the sense of depth between
+     background and surface. */
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { font-family: var(--font-display); line-height: 1.15; margin: 0; }
+h1 { font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 700; letter-spacing: -0.02em; }
+h2 { font-size: clamp(1.4rem, 3vw, 2rem); font-weight: 600; letter-spacing: -0.01em; }
+h3 { font-size: 1.05rem; font-weight: 600; }
+p { margin: 0 0 var(--s4); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.mono { font-family: var(--font-mono); font-size: 0.86em; }
+.dim { color: var(--fg-muted); }
+.wrap { max-width: 940px; margin: 0 auto; padding: 0 var(--s5); }
+.narrow { max-width: 660px; }
+
+/* ── surfaces ─────────────────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--s5);
+  margin-bottom: var(--s4);
+}
+.card h3 { margin-bottom: var(--s2); }
+
+.note { border-radius: var(--r); padding: var(--s3) var(--s4); font-size: 0.9rem; line-height: 1.55; }
+.note-ok   { background: var(--accent-wash); border: 1px solid var(--accent-dim); }
+.note-warn { background: var(--warn-wash);   border: 1px solid var(--warn); }
+.note-err  { background: var(--danger-wash); border: 1px solid var(--danger); }
+.note-info { background: var(--surface-2);   border: 1px solid var(--border); }
+
+/* ── controls ─────────────────────────────────────────────────────────── */
+button {
+  font: 500 0.95rem/1 var(--font-body);
+  color: var(--bg);
+  background: var(--accent);
+  border: 0;
+  border-radius: var(--r);
+  /* 44px min target — a wallet action is not a place to make people aim. */
+  padding: 0 var(--s5);
+  min-height: 44px;
+  cursor: pointer;
+  transition: background 180ms var(--ease), transform 180ms var(--ease), opacity 180ms var(--ease);
+}
+button:hover:not(:disabled) { background: #fbbf24; }
+button:active:not(:disabled) { transform: scale(0.98); }
+button:disabled { background: var(--surface-2); color: var(--fg-dim); cursor: not-allowed; }
+button.ghost { background: transparent; color: var(--fg); border: 1px solid var(--border-strong); }
+button.ghost:hover:not(:disabled) { background: var(--surface-2); }
+
+/* Never remove the focus ring — replace it with a better one. */
+:where(a, button, input, select):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+label { display: inline-flex; align-items: center; gap: var(--s2); color: var(--fg-muted); font-size: 0.9rem; }
+input, select {
+  font: 400 0.95rem var(--font-mono);
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r);
+  padding: 10px var(--s3);
+  min-height: 44px;
+}
+input:focus, select:focus { border-color: var(--accent); }
+
+.row { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: center; }
+
+/* ── data ─────────────────────────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+th { text-align: left; font-weight: 500; color: var(--fg-muted); font-size: 0.8rem;
+     text-transform: uppercase; letter-spacing: 0.06em; padding-bottom: var(--s2); }
+td { padding: var(--s3) 0; border-top: 1px solid var(--border); }
+td.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.75rem; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 4px 10px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--border-strong); color: var(--fg-muted);
+}
+.pill-ok { background: var(--accent-wash); border-color: var(--accent-dim); color: var(--accent); }
+
+.steps { list-style: none; padding: 0; margin: 0; font-size: 0.9rem; }
+.steps li { padding: var(--s2) 0; border-top: 1px solid var(--border); color: var(--fg-muted); }
+.steps li:first-child { border-top: 0; }
+
+/* ── landing ──────────────────────────────────────────────────────────── */
+/* padding-block only. Setting the shorthand here zeroed .wrap's horizontal
+   padding, so the hero sat 24px left of every section under it — the kind of
+   misalignment that reads as sloppy long before anyone can name it. */
+.hero { padding-top: var(--s8); padding-bottom: var(--s7); }
+.hero p.lede { font-size: 1.15rem; color: var(--fg-muted); max-width: 34em; }
+.eyebrow {
+  font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: var(--s3);
+}
+.grid { display: grid; gap: var(--s4); grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.stat { font-family: var(--font-mono); font-size: 1.6rem; color: var(--fg); font-variant-numeric: tabular-nums; }
+
+footer { border-top: 1px solid var(--border); margin-top: var(--s8); padding: var(--s5) 0 var(--s7);
+         color: var(--fg-dim); font-size: 0.85rem; }
+
+/* Motion is here to show relationships, not to perform. Anyone who has asked
+   the OS to stop it gets no movement at all. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  html { scroll-behavior: auto; }
+}

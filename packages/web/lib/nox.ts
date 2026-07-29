@@ -26,6 +26,34 @@ export async function encryptOrder(
   return { amt, cod };
 }
 
+/// Public-decrypt a handle the contract has marked publicly decryptable, and
+/// return the gateway's signature along with the value. Settlement needs three of
+/// these — the clearing tick and the two unwrap requests — and the contract
+/// re-verifies every signature itself, so the caller cannot lie about a single
+/// number and does not have to be trusted with any of them.
+///
+/// Retried like `decryptMine`: the handle exists the moment `clear()` lands, but
+/// the ciphertext only appears once the single-threaded Runner has caught up.
+export async function publicDecryptHandle(
+  wallet: WalletClient,
+  handle: `0x${string}`,
+  onWait?: (i: number, n: number) => void,
+) {
+  const c = await client(wallet);
+  const N = 12;
+  for (let i = 1; i <= N; i++) {
+    try {
+      const { value, decryptionProof } = await c.publicDecrypt(handle);
+      return { value: value as bigint, decryptionProof };
+    } catch (err) {
+      if (i === N) throw err;
+      onWait?.(i, N);
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+  }
+  throw new Error('unreachable');
+}
+
 /// ACL-gated private decrypt (gasless). Lets a trader read their OWN escrow.
 /// Retries because a handle exists on-chain immediately but its ciphertext only
 /// appears once the single-threaded Runner has processed the event.

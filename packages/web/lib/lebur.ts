@@ -93,6 +93,16 @@ export const batchAbi = [
       { name: 'viewer', type: 'address' },
     ], outputs: [] },
   { type: 'function', name: 'clear', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+  // Settlement takes three gateway-signed decryptions and re-verifies each one, so
+  // it is safe to expose to anyone — the caller supplies proofs, not numbers.
+  { type: 'function', name: 'settle', stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'tick', type: 'uint16' }, { name: 'tickProof', type: 'bytes' },
+      { name: 'proof0', type: 'bytes' }, { name: 'proof1', type: 'bytes' },
+    ], outputs: [] },
+  { type: 'function', name: 'bestTick', stateMutability: 'view', inputs: [], outputs: [{ type: 'bytes32' }] },
+  { type: 'function', name: 'unwrapId0', stateMutability: 'view', inputs: [], outputs: [{ type: 'bytes32' }] },
+  { type: 'function', name: 'unwrapId1', stateMutability: 'view', inputs: [], outputs: [{ type: 'bytes32' }] },
   { type: 'function', name: 'payout', stateMutability: 'nonpayable',
     inputs: [{ type: 'uint256' }], outputs: [] },
   { type: 'function', name: 'phase', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] },
@@ -105,8 +115,29 @@ export const batchAbi = [
   { type: 'function', name: 'clearingPrice', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'residual0Revealed', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'residual1Revealed', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  // The order book. Sizes and limit come back as encrypted handles — only
+  // `trader` and `paid` are readable, which is exactly what the payout pass needs.
+  { type: 'function', name: 'orders', stateMutability: 'view',
+    inputs: [{ type: 'uint256' }],
+    outputs: [
+      { name: 'trader', type: 'address' },
+      { name: 'qBuy', type: 'bytes32' },
+      { name: 'qSell', type: 'bytes32' },
+      { name: 'limitTick', type: 'bytes32' },
+      { name: 'paid', type: 'bool' },
+    ] },
   { type: 'function', name: 'poolUsed', stateMutability: 'view', inputs: [], outputs: [{ type: 'bool' }] },
   { type: 'function', name: 'poolOut', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   // How many numbers this batch has made public, ever. The privacy claim in one integer.
   { type: 'function', name: 'publicFootprint', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  // One deployment, many auctions. Permissionless like every other step, so the
+  // page can offer it to whoever is reading. `epoch` doubles as the feature
+  // probe: deployments made before these existed simply have no such getter.
+  { type: 'function', name: 'epoch', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'startNewBatch', stateMutability: 'nonpayable',
+    inputs: [{ name: 'newDeadline', type: 'uint64' }], outputs: [] },
 ] as const;
+
+/// `startNewBatch` bounds the window to [5 minutes, 30 days]. Ten gives a demo
+/// enough room to place two orders without leaving the page parked for an hour.
+export const NEW_BATCH_WINDOW_SECS = 10 * 60;
