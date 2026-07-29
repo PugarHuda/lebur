@@ -113,6 +113,38 @@ describe('LeburBatch guards', () => {
     assert.equal(Number(await batch.read.orderCount()), 0);
   });
 
+  // Pagination on an empty book. The book being empty is the point: it makes the
+  // scan cheap while still exercising the thing that can actually go wrong, which
+  // is the CARRY — six encrypted handles that have to survive a transaction
+  // boundary, and that die permanently if any one of them is not re-listed. The
+  // paged path's agreement with the unpaged one on a real book is asserted in
+  // batch.e2e.test.ts, against the reference oracle.
+  it('scans the ladder across several transactions without clearing early', async () => {
+    const { deploy, conn } = await fixture();
+    const batch = await deploy([...LADDER]);
+    const T = Number(await batch.read.tickCount());
+    assert.ok(T >= 3, 'the demo ladder needs at least three ticks to page over');
+    await travel(conn);
+
+    await assert.rejects(() => batch.write.clearPaged([0n]), /maxTicks = 0/);
+
+    await batch.write.clearPaged([1n]);
+    assert.equal(Number(await batch.read.phase()), 0, 'still Open after one tick');
+    assert.equal(Number(await batch.read.clearCursor()), 1);
+    // Nothing may be published from a half-scanned argmax: the leader it holds
+    // right now is not the answer, and settling on it would clear the whole batch
+    // at the wrong price.
+    await assert.rejects(() => batch.read.publicFootprint(), /WrongPhase/);
+
+    await batch.write.clearPaged([1n]);
+    assert.equal(Number(await batch.read.phase()), 0, 'still Open after two');
+    // Finish with the unpaged entry point: it passes type(uint256).max as the page
+    // size, so a naive `cursor + maxTicks` would panic on overflow right here.
+    await batch.write.clear();
+    assert.equal(Number(await batch.read.phase()), 1, 'Cleared once the last tick lands');
+    assert.equal(Number(await batch.read.clearCursor()), T);
+  });
+
   // Resetting is only meaningful on a settled, fully-paid batch, so the real
   // multi-batch test lives in batch.e2e.test.ts where such a batch exists. What
   // belongs here is the guard that stops a reset before that point — clearing

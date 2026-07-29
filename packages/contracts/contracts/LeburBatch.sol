@@ -134,6 +134,14 @@ contract LeburBatch is ReentrancyGuard {
     Order[] public orders;
 
     // ── clearing results, all encrypted ───────────────────────────────────────
+    /// How many ticks of the ladder `clear()` has scanned so far. Non-zero only
+    /// between pages of a paginated clearing — see clearPaged.
+    uint256 public clearCursor;
+    /// The argmax's running score. Only meaningful mid-scan; `clear()` leaves it
+    /// as whatever the winning tick scored. Internal because it is a carry, not a
+    /// result: publishing it would say how far ahead the winner was.
+    euint256 internal bestScore;
+
     euint256 public bestV;    // coin1 crossed internally at the clearing price
     euint256 public bestP;    // clearing price
     euint16 public bestTick;  // clearing tick — the ONLY handle marked publicly decryptable here
@@ -379,22 +387,62 @@ contract LeburBatch is ReentrancyGuard {
     /// @dev Cost: T * (6N + 17) + 11 encrypted ops. Nothing here can short-circuit —
     ///      the winning tick is a secret, so every tick is always fully evaluated.
     function clear() external {
+        _clear(type(uint256).max);
+    }
+
+    /// @notice Scan at most `maxTicks` more ticks of the ladder, then stop.
+    ///         Resumable: call until the phase flips to Cleared.
+    ///
+    /// @dev This is what makes MAX_TICKS and MAX_ORDERS policy numbers instead of
+    ///      gas numbers. A full scan is T*(6N+17)+11 sequential encrypted ops, and
+    ///      because nothing can short-circuit on a secret that cost is the worst
+    ///      case every single time — so the ladder and the book together used to
+    ///      have to fit one block, one Runner pass, one transaction.
+    ///
+    ///      Pausing mid-argmax is only safe because the book cannot move while it
+    ///      is paused: paging can begin only after `submitDeadline`, and
+    ///      `submitOrder` refuses past that deadline. So every page scans its
+    ///      ticks against exactly the same orders the first page did, and the
+    ///      carry stays meaningful. The phase deliberately stays Open until the
+    ///      last tick lands — a half-scanned argmax must never be visible to
+    ///      settle, because the losing tick it currently holds would settle the
+    ///      whole batch at the wrong price.
+    function clearPaged(uint256 maxTicks) external {
+        require(maxTicks > 0, "maxTicks = 0");
+        _clear(maxTicks);
+    }
+
+    function _clear(uint256 maxTicks) internal {
         if (phase != Phase.Open) revert WrongPhase();
         if (block.timestamp <= submitDeadline) revert DeadlineNotReached();
 
         uint256 T = ladder.length;
         uint256 n = orders.length;
+        uint256 cursor = clearCursor;
 
-        Best memory b = Best({
-            score: EZERO,
-            v: EZERO,
-            p: EPRICE[0], // never zero, so the divisions below are always safe
-            tick: ETICK[0],
-            dq: EZERO,
-            s1: EZERO
-        });
+        // Resume the carry, or seed it. Note the fields are read back from the
+        // very state slots the finished scan writes its results into: mid-scan
+        // they hold a leader, and only the final page turns that into an answer.
+        Best memory b = cursor == 0
+            ? Best({
+                score: EZERO,
+                v: EZERO,
+                p: EPRICE[0], // never zero, so the divisions below are always safe
+                tick: ETICK[0],
+                dq: EZERO,
+                s1: EZERO
+            })
+            : Best({score: bestScore, v: bestV, p: bestP, tick: bestTick, dq: bestDq, s1: bestS1});
 
-        for (uint256 t; t < T; ++t) {
+        // cursor + maxTicks, clamped, without the overflow that `cursor + max`
+        // would panic on once cursor is non-zero — which is precisely what the
+        // unpaged entry point passes when finishing a partly-paged scan.
+        uint256 end;
+        unchecked {
+            end = maxTicks >= T - cursor ? T : cursor + maxTicks;
+        }
+
+        for (uint256 t = cursor; t < end; ++t) {
             euint256 dq = EZERO;
             euint256 s1 = EZERO;
             for (uint256 i; i < n; ++i) {
@@ -427,6 +475,29 @@ contract LeburBatch is ReentrancyGuard {
             b.s1 = Nox.select(better, s1, b.s1);
         }
 
+        // Persist the carry. Encrypted handles die in the next transaction unless
+        // they are listed, so an argmax that survives a transaction boundary has
+        // to be written down and re-permitted here — this is the whole cost of
+        // pagination, six ops a page.
+        bestScore = b.score;
+        bestV = b.v;
+        bestP = b.p;
+        bestTick = b.tick;
+        bestDq = b.dq;
+        bestS1 = b.s1;
+        Nox.allowThis(bestScore);
+        Nox.allowThis(bestV);
+        Nox.allowThis(bestP);
+        Nox.allowThis(bestTick);
+        Nox.allowThis(bestDq);
+        Nox.allowThis(bestS1);
+        clearCursor = end;
+
+        // Ladder not fully scanned yet: stop here, phase stays Open, nothing is
+        // revealed and no residual is unwrapped. Everything below this line
+        // publishes something, so none of it may run on a partial answer.
+        if (end < T) return;
+
         // Recomputed once rather than carried through the loop — saves T selects.
         // b.p is only ever one of the ladder constants, so it is never zero.
         euint256 d1Best = Nox.div(Nox.mul(b.dq, EWAD), b.p);
@@ -441,19 +512,11 @@ contract LeburBatch is ReentrancyGuard {
         euint256 r0 = Nox.select(buysHeavy, excess0, EZERO);
         euint256 r1 = Nox.select(buysHeavy, EZERO, excess1);
 
-        bestV = b.v;
-        bestP = b.p;
-        bestTick = b.tick;
-        bestDq = b.dq;
-        bestS1 = b.s1;
+        // bestV..bestS1 are already stored and permitted above — the carry IS the
+        // result once the last tick has been scanned.
         clearC0 = c0;
         resid0 = r0;
         resid1 = r1;
-        Nox.allowThis(bestV);
-        Nox.allowThis(bestP);
-        Nox.allowThis(bestTick);
-        Nox.allowThis(bestDq);
-        Nox.allowThis(bestS1);
         Nox.allowThis(clearC0);
         Nox.allowThis(resid0);
         Nox.allowThis(resid1);
@@ -512,14 +575,25 @@ contract LeburBatch is ReentrancyGuard {
         phase = Phase.Settled; // effects before interactions; nonReentrant also guards
 
         // Releasing the underlying IS the reveal: finalizeUnwrap verifies the gateway
-        // signature over the burn handle before it transfers anything.
+        // signature over the burn handle before it transfers anything. Reading the
+        // result back beats trusting a number in the calldata, and beats decrypting
+        // the same handle twice.
+        //
+        // Measure the DELTA, not the balance. The balance was "obviously" the
+        // residual — the contract holds no plaintext coin between batches — until
+        // you notice that anyone can `transfer` either token straight to this
+        // address for the price of one ERC-20 call, with no cooperation from us.
+        // That inflated the published residual and therefore `publicFootprint`,
+        // the single number this whole design offers as its privacy claim, and it
+        // pushed a stranger's tokens through the Curve leg as if they were a
+        // trader's. A donation is now simply ignored: it stays here and gets
+        // wrapped into the contract's own confidential dust by _rewrap.
+        uint256 before0 = token0.balanceOf(address(this));
+        uint256 before1 = token1.balanceOf(address(this));
         cToken0.finalizeUnwrap(unwrapId0, proof0);
         cToken1.finalizeUnwrap(unwrapId1, proof1);
-        // The contract holds no other plaintext balance of either coin between
-        // batches, so its balance IS the revealed residual. Reading it back beats
-        // trusting a number in the calldata, and beats decrypting the same handle twice.
-        residual0Revealed = token0.balanceOf(address(this));
-        residual1Revealed = token1.balanceOf(address(this));
+        residual0Revealed = token0.balanceOf(address(this)) - before0;
+        residual1Revealed = token1.balanceOf(address(this)) - before1;
 
         _swapResidual();
         _rewrap();
@@ -619,6 +693,9 @@ contract LeburBatch is ReentrancyGuard {
 
         delete orders;
         paidCount = 0;
+        // Rewind the ladder scan, or the next clear() would resume from the end
+        // of the last one and never scan a tick.
+        clearCursor = 0;
         clearingTickRevealed = 0;
         clearingPrice = 0;
         residual0Revealed = 0;
@@ -687,14 +764,20 @@ contract LeburBatch is ReentrancyGuard {
         return ladder.length;
     }
 
-    /// @notice Gross notional the batch would have pushed through the public pool if
-    ///         every order had routed itself, against what actually reaches it. This
-    ///         is only callable after settle, and only reads already-public numbers.
+    /// @notice How much value the batch ever exposed to the public chain: the
+    ///         residual, and nothing else. Callable only after settle, and it reads
+    ///         nothing that is not already public.
+    /// @dev It is deliberately NOT a ratio against gross notional, tempting as that
+    ///      framing is. Gross notional is the sum of the order sizes, which is
+    ///      encrypted and must stay that way — publishing it would hand an observer
+    ///      exactly the aggregate this auction exists to hide, and on a two-order
+    ///      book it would come close to naming the individual sizes. Compare this
+    ///      number against what you know you submitted, off-chain.
     /// @dev The honest metric is PUBLIC FOOTPRINT, not slippage saved: Curve is flat
     ///      at the peg, so the residual settles at roughly par either way. The claim
     ///      is confidentiality and MEV resistance at institutional size, settling at
     ///      par — not "we saved you slippage".
-    function publicFootprint() external view returns (uint256 routed) {
+    function publicFootprint() external view returns (uint256 exposed) {
         if (phase != Phase.Settled) revert WrongPhase();
         return residual0Revealed + residual1Revealed;
     }

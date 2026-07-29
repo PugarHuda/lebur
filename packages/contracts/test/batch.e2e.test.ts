@@ -157,6 +157,17 @@ describe('Lebur confidential uniform-price batch auction', () => {
     const r0Reveal = await nox.publicDecrypt(id0);
     const r1Reveal = await nox.publicDecrypt(id1);
 
+    // Grief the settlement: send plaintext coin0 straight to the batcher, which
+    // anyone can do for the price of one ERC-20 call. Settlement used to publish
+    // its own BALANCE as the residual, so this inflated `publicFootprint` — the
+    // one number this design offers as its privacy claim — and pushed a
+    // stranger's tokens through the Curve leg as if a trader had sold them.
+    // Every residual assertion below is against the oracle, so if the donation
+    // leaks into the published figures by even a wei, this test fails.
+    const GRIFT = tok(50);
+    await t0.write.mint([op.account.address, GRIFT]);
+    await t0.write.transfer([batch.address, GRIFT]);
+
     // bestTick and the residual do not depend on what the pool later returns.
     const expected = auction([...LADDER], DEMO);
     assert.equal(Number(tickReveal.value), expected.c.bestTick, 'clearing tick matches the oracle');
@@ -303,7 +314,21 @@ describe('Lebur confidential uniform-price batch auction', () => {
 
     await conn.provider.request({ method: 'evm_increaseTime', params: TIME_TRAVEL });
     await conn.provider.request({ method: 'evm_mine', params: [] });
-    await batch.write.clear();
+
+    // Scan the ladder in pages here, one tick at a time, while the main e2e above
+    // does it in a single call. Same book, same oracle, so if carrying the argmax
+    // across transaction boundaries changed the answer by even a wei, the per-trader
+    // balance assertions at the bottom of this test would catch it. This is the
+    // cheapest real proof the paged path exists: it reuses an oracle comparison
+    // that was already here rather than adding a second, weaker one.
+    const ticks = Number(await batch.read.tickCount());
+    for (let t = 0; t < ticks; t++) {
+      await batch.write.clearPaged([1n]);
+      assert.equal(
+        Number(await batch.read.phase()), t === ticks - 1 ? 1 : 0,
+        'the batch clears only once the LAST tick has been scanned',
+      );
+    }
 
     const tickReveal = await nox.publicDecrypt((await batch.read.bestTick()) as `0x${string}`);
     const r0 = await nox.publicDecrypt((await batch.read.unwrapId0()) as `0x${string}`);
