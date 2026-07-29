@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@iexec-nox/handle": "0.1.0-beta.13",
-    "ethers": "^6",
     "next": "^15",
     "react": "^19",
     "react-dom": "^19",
@@ -20,6 +19,7 @@
     "@playwright/test": "^1.62.0",
     "@types/node": "^22.20.1",
     "@types/react": "^19",
+    "ethers": "^6.17.0",
     "typescript": "^5"
   }
 }

@@ -139,6 +139,29 @@ td.num { text-align: right; font-family: var(--font-mono); font-variant-numeric:
 .steps li { padding: var(--s2) 0; border-top: 1px solid var(--border); color: var(--fg-muted); }
 .steps li:first-child { border-top: 0; }
 
+
+/* ── dashboard strip ──────────────────────────────────────────────────── */
+/* At-a-glance state above the actions. A dApp page that opens with a form
+   makes you hunt for what the contract currently thinks; this puts the four
+   numbers that decide what you can even do in one line. */
+.stats {
+  display: grid; gap: 1px; background: var(--border);
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  overflow: hidden; margin-bottom: var(--s5);
+}
+.stats > div { background: var(--surface); padding: var(--s4) var(--s5); }
+.stats dt {
+  font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--fg-dim); margin-bottom: 6px;
+}
+.stats dd {
+  margin: 0; font-family: var(--font-mono); font-size: 1.15rem;
+  font-variant-numeric: tabular-nums; color: var(--fg);
+}
+.stats dd small { font-size: 0.72rem; color: var(--fg-muted); font-family: var(--font-body); }
+.stats dd.accent { color: var(--accent); }
+
 /* ── landing ──────────────────────────────────────────────────────────── */
 /* padding-block only. Setting the shorthand here zeroed .wrap's horizontal
    padding, so the hero sat 24px left of every section under it — the kind of

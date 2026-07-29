@@ -35,25 +35,28 @@ test('renders, and reads the live batch from chain', async ({ page }) => {
   // phase, order count, deadline and the ladder are four separate eth_calls
   // batched through Multicall3. If any of them is wrong the card never leaves
   // "loading…", which no build step can tell you.
-  const status = page.locator('section', { hasText: 'Batch status' }).first();
+  // The status strip is the single place the page reports contract state.
+    const status = page.locator('dl.stats');
   // The labels are the UI's, not the enum's — `Accepting orders`, not `Open`.
   // Asserting the enum name here passed review and failed the browser, which is
   // the whole reason this file exists.
-  await expect(status).toContainText(/phase:\s*(Accepting orders|Cleared|Settled)/, { timeout: 30_000 });
-  await expect(status).toContainText(/sealed orders:/);
+  await expect(status).toContainText(/(Accepting orders|Cleared|Settled)/, { timeout: 30_000 });
+  await expect(status).toContainText(/Sealed orders/i);
 
   // The ladder is read from the contract, not hardcoded here — it is the
   // auction's grammar and it has to come from the deployment being displayed.
-  await expect(status).toContainText(/price ladder:.*0\.9995/);
+  // The ladder is read from the contract, not hardcoded here.
+  await expect(page.getByText(/Price ladder/)).toContainText('0.9995');
 
   expect(problems, 'page must load with no errors').toEqual([]);
 });
 
 test('offers exactly the lifecycle step the batch is actually ready for', async ({ page }) => {
   await page.goto(`${BASE}/app`, { waitUntil: 'networkidle' });
-  const status = page.locator('section', { hasText: 'Batch status' }).first();
-  await expect(status).toContainText(/phase:/, { timeout: 30_000 });
-  const phase = (await status.textContent())!.match(/phase:\s*(Accepting orders|Cleared|Settled)/)![1];
+  // The status strip is the single place the page reports contract state.
+    const status = page.locator('dl.stats');
+  await expect(status).toContainText(/Phase/i, { timeout: 30_000 });
+  const phase = (await status.textContent())!.match(/(Accepting orders|Cleared|Settled)/)![1];
 
   const submit = page.getByRole('button', { name: 'Submit sealed order' });
   const clear = page.getByRole('button', { name: 'Clear the batch' });
@@ -61,7 +64,8 @@ test('offers exactly the lifecycle step the batch is actually ready for', async 
   const payout = page.getByRole('button', { name: /Pay out/ });
 
   if (phase === 'Accepting orders') {
-    const closed = /\(closed\)/.test((await status.textContent())!);
+    const closed = /Closed/.test((await status.textContent())!)
+      && !/Orders close/i.test((await status.textContent())!);
     // Before the window closes you may submit and may not clear; after it
     // closes the two swap over. Both are permissionless — the point is that the
     // page never offers the one that would revert.
@@ -82,24 +86,26 @@ test('offers exactly the lifecycle step the batch is actually ready for', async 
 
 test('reports the public footprint only once there is one', async ({ page }) => {
   await page.goto(`${BASE}/app`, { waitUntil: 'networkidle' });
-  const status = page.locator('section', { hasText: 'Batch status' }).first();
-  await expect(status).toContainText(/phase:/, { timeout: 30_000 });
-  const phase = (await status.textContent())!.match(/phase:\s*(Accepting orders|Cleared|Settled)/)![1];
+  // The status strip is the single place the page reports contract state.
+    const status = page.locator('dl.stats');
+  await expect(status).toContainText(/Phase/i, { timeout: 30_000 });
+  const phase = (await status.textContent())!.match(/(Accepting orders|Cleared|Settled)/)![1];
 
   // publicFootprint reverts with WrongPhase until Settled. Reading it earlier
   // used to surface as a page-wide error on a perfectly healthy batch, so the
   // absence of that error is the assertion here.
-  if (phase === 'Settled') await expect(status).toContainText(/public footprint:/);
-  else await expect(status).not.toContainText(/public footprint:/);
+  if (phase === 'Settled') await expect(status).not.toContainText(/not until settled/);
+  else await expect(status).toContainText(/not until settled/);
 
   await expect(page.getByText(/Failed to read batch/)).toHaveCount(0);
 });
 
 test('lets a trader read their own order back, and only their own', async ({ page }) => {
   await page.goto(`${BASE}/app`, { waitUntil: 'networkidle' });
-  const status = page.locator('section', { hasText: 'Batch status' }).first();
-  await expect(status).toContainText(/sealed orders:/, { timeout: 30_000 });
-  const orders = Number((await status.textContent())!.match(/sealed orders:\s*(\d+)/)![1]);
+  // The status strip is the single place the page reports contract state.
+    const status = page.locator('dl.stats');
+  await expect(status).toContainText(/Sealed orders/i, { timeout: 30_000 });
+  const orders = Number((await status.textContent())!.match(/Sealed orders\s*(\d+)/i)![1]);
 
   const panel = page.getByText('Read your own order back');
   // With an empty book there is nothing to read, and offering the control anyway

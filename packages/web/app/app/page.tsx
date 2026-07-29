@@ -11,6 +11,21 @@ import {
 import { encryptOrder, publicDecryptHandle, decryptMine } from '../../lib/nox';
 import { connectSnap, getNoxAddress } from '../../lib/snap';
 import Link from 'next/link';
+
+/// A deadline is only useful as a distance. "8/5/2026, 10:24:48 AM" makes you do
+/// arithmetic before you know whether the book is still open; "4d 6h" does not.
+function Countdown({ to }: { to: number }) {
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  const left = to - now;
+  if (left <= 0) return <>closed</>;
+  const d = Math.floor(left / 86400), h = Math.floor((left % 86400) / 3600);
+  const m = Math.floor((left % 3600) / 60);
+  return <>{d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${m}m`}</>;
+}
 import { Alert, Ext, Lock, Spinner } from '../icons';
 
 type Batch = {
@@ -348,27 +363,44 @@ export default function Home() {
         <a href={explorerAddr(ADDRESSES.pool)} target="_blank" rel="noreferrer">unmodified Curve pool</a>.
       </p>
 
-      <section className="card">
-        <b>Batch status</b>
-        {!b ? <p style={{ color: '#889' }}>loading…</p> : (
-          <ul style={{ margin: '8px 0 0', paddingLeft: 18, lineHeight: 1.7 }}>
-            <li>phase: <b>{PHASES[b.phase] ?? b.phase}</b></li>
-            <li>sealed orders: <b>{String(b.orders)}</b> — sizes, sides and limits all encrypted</li>
-            <li>
-              orders close: {new Date(b.deadline * 1000).toLocaleString()}{' '}
-              {open ? '' : <b>(closed)</b>}
-            </li>
-            <li>price ladder: {b.ladder.map((p) => (Number(p) / 1e18).toFixed(4)).join(' · ')}</li>
-            {b.footprint !== undefined && (
-              <li>
-                <b>public footprint: {formatEther(b.footprint)}</b> — the total value
-                that ever reached the public chain, against {String(b.orders)} sealed
-                orders whose sizes remain encrypted
-              </li>
-            )}
-          </ul>
-        )}
-      </section>
+      {/* State before actions: what the contract currently thinks, in one line,
+          so nothing below can offer a step the batch is not ready for without
+          the contradiction being visible. */}
+      <dl className="stats">
+        <div>
+          <dt>Phase</dt>
+          <dd className={b?.phase === 0 ? 'accent' : undefined}>{b ? PHASES[b.phase] ?? b.phase : '…'}</dd>
+        </div>
+        <div>
+          <dt>{open ? 'Orders close' : 'Closed'}</dt>
+          <dd>{b ? <Countdown to={b.deadline} /> : '…'}</dd>
+        </div>
+        <div>
+          <dt>Sealed orders</dt>
+          <dd>{b ? String(b.orders) : '…'} <small>sizes encrypted</small></dd>
+        </div>
+        <div>
+          <dt>Public footprint</dt>
+          <dd className={b?.footprint !== undefined ? 'accent' : undefined}>
+            {b?.footprint === undefined
+              ? <small>not until settled</small>
+              : Number(formatEther(b.footprint)).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+          </dd>
+        </div>
+      </dl>
+
+      {/* Only what the strip above does NOT already say. Repeating phase, order
+          count and deadline in a second card made the page look like two
+          different readings of the same contract. */}
+      <p className="dim" style={{ fontSize: '0.9rem', marginBottom: 'var(--s5)' }}>
+        Price ladder{' '}
+        <span className="mono">
+          {(b?.ladder ?? []).map((p) => (Number(p) / 1e18).toFixed(4)).join(' · ') || '…'}
+        </span>
+        {' '}— public on purpose: the ladder is the auction&apos;s grammar, and price
+        discovery is what a uniform-price auction is for. What stays secret is where
+        on it each order sits, and how big it is.
+      </p>
 
       {b && b.phase >= 1 && (
         <section className="card">

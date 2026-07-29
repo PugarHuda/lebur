@@ -494,7 +494,28 @@ Tabular figures on every number, 44px minimum targets, visible focus rings,
 cd packages/web && npm install && npm run dev
 ```
 
-### The browser is tested too, against the deployed page
+### The write path is tested in a browser too
+
+`e2e/wallet.ts` injects a real signing wallet as `window.ethereum` — an EIP-1193
+provider backed by an ethers `Wallet`, not a mock of MetaMask. Transactions are
+signed, broadcast and mined on real Sepolia, so the opt-in spec drives the whole
+sequence a user actually performs and asserts the result on-chain.
+
+That is where this project's real bugs lived, and read-only assertions cannot
+reach any of them. It is **opt-in** because it spends gas:
+
+```bash
+WALLET_KEY=0x… npm run test:e2e            # skips without the key
+```
+
+It deliberately does NOT pretend a Snap is installed: `wallet_requestSnaps`
+throws, the page falls back to the EOA viewer, and the spec asserts that the page
+*says so* — which is the check that would catch a page quietly downgrading while
+still calling itself coercion-resistant. Loading the Snap in MetaMask Flask is
+still a human's job, because MetaMask's own RPC restrictions are the thing that
+put the viewing key in the Snap to begin with.
+
+### The read path is tested against the deployed page
 
 `npm run test:e2e` drives [lebur.vercel.app](https://lebur.vercel.app) in a real
 Chromium and asserts against the live batch. `tsc` and `next build` are both clean
