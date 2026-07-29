@@ -9,6 +9,7 @@ import { createWalletClient, createPublicClient, http, getContract } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts';
 import { sepolia } from 'viem/chains';
 import { createViemHandleClient } from '@iexec-nox/handle';
+import { freshChainTime } from './chain-time.ts';
 
 const batchAbi = [
   { type: 'function', name: 'clear', stateMutability: 'nonpayable', inputs: [], outputs: [] },
@@ -57,7 +58,10 @@ async function main() {
 
   const n = await b.read.orderCount();
   const deadline = await b.read.submitDeadline();
-  const chainNow = (await pub.getBlock()).timestamp;
+  // Fresh, not just `latest` — a stale block makes a closed submit window look
+  // open (clear() then reverts) and an open one look closed (this script then
+  // refuses a batch that is in fact ready).
+  const chainNow = await freshChainTime(pub);
   console.log(`batch ${b.address}  orders=${n}  phase=${await b.read.phase()}`);
   console.log(`deadline ${new Date(Number(deadline) * 1000).toISOString()}  chain now ${new Date(Number(chainNow) * 1000).toISOString()}`);
   if (process.env.DRY === '1') return;

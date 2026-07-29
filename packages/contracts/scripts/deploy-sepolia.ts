@@ -11,6 +11,7 @@
 // whose window expired before anyone could use it.
 import { network } from 'hardhat';
 import { LADDER } from './curve-config.ts';
+import { freshChainTime } from './chain-time.ts';
 
 const SUBMIT_WINDOW_SECS = Number(process.env.SUBMIT_WINDOW_SECS ?? 1800);
 
@@ -39,7 +40,7 @@ async function main() {
 
   // Anchor the deadline to CHAIN time. `submitOrder` and `clear` both compare against
   // block.timestamp, and the local clock is not the chain's.
-  const now = (await pub.getBlock()).timestamp;
+  const now = await freshChainTime(pub);
   const deadline = now + BigInt(SUBMIT_WINDOW_SECS);
 
   const batch = await viem.deployContract('LeburBatch', [
