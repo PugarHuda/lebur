@@ -410,7 +410,7 @@ export default function Home() {
             <li>residual to the public pool: {formatEther(b.resid0 ?? 0n)} / {formatEther(b.resid1 ?? 0n)}</li>
             <li>Curve leg used: <b>{b.poolUsed ? 'yes' : 'no'}</b>{b.poolUsed && b.poolOut ? ` — received ${formatEther(b.poolOut)}` : ''}</li>
           </ul>
-          <p style={{ fontSize: 13, color: '#456', marginBottom: 0 }}>
+          <p className="dim" style={{ fontSize: '0.85rem', marginBottom: 0 }}>
             Everything else — every order&apos;s size, side, limit and fill — stays
             encrypted forever.
           </p>
@@ -447,18 +447,18 @@ export default function Home() {
           <button className="ghost" disabled={busy} onClick={() => run(refresh)}>Refresh</button>
         </div>
         {!open && b?.phase === 0 && (
-          <p style={{ fontSize: 13, color: '#666', marginBottom: 0 }}>
+          <p className="dim" style={{ fontSize: '0.85rem', marginBottom: 0 }}>
             Orders are closed — anyone can now clear the batch.
           </p>
         )}
         {b?.phase === 1 && (
-          <p style={{ fontSize: 13, color: '#666', marginBottom: 0 }}>
+          <p className="dim" style={{ fontSize: '0.85rem', marginBottom: 0 }}>
             This batch has cleared. Settling it is the next step, and anyone can do
             it — see the panel below.
           </p>
         )}
         {b?.phase === 2 && (
-          <p style={{ fontSize: 13, color: '#666', marginBottom: 0 }}>
+          <p className="dim" style={{ fontSize: '0.85rem', marginBottom: 0 }}>
             This batch is <b>settled</b>, so it takes no new orders — the numbers
             above are its final, permanent record.{' '}
             {b.resettable
@@ -471,7 +471,7 @@ export default function Home() {
       {b?.phase === 1 && (
         <section className="card">
           <b>Settle the batch — anyone can do this</b>
-          <p style={{ fontSize: 13, color: '#456', margin: '6px 0 10px' }}>
+          <p className="dim" style={{ fontSize: '0.85rem', margin: '6px 0 10px' }}>
             Reveals the clearing tick and both residuals — the only three numbers this
             batch ever publishes — and pushes the residual through one
             {' '}<code>exchange_received</code> against the real Curve pool. Each
@@ -488,7 +488,7 @@ export default function Home() {
       {b && b.orders > 0n && (
         <section className="card">
           <b>Read your own order back</b>
-          <p style={{ fontSize: 13, color: '#456', margin: '6px 0 10px' }}>
+          <p className="dim" style={{ fontSize: '0.85rem', margin: '6px 0 10px' }}>
             Gasless, and gated by the viewer role granted when the order was sealed:
             it works for your orders and fails for everyone else&apos;s. The size sits
             on-chain the entire time — what makes it private is that only you can turn
@@ -505,7 +505,7 @@ export default function Home() {
       {b?.phase === 2 && b.unpaid !== undefined && (
         <section className="card">
           <b>Collect the fills — anyone can push any order&apos;s payout</b>
-          <p style={{ fontSize: 13, color: '#456', margin: '6px 0 10px' }}>
+          <p className="dim" style={{ fontSize: '0.85rem', margin: '6px 0 10px' }}>
             Each order gets its pro-rata fill at the clearing price plus a refund of
             whatever escrow it did not spend, both moved as confidential transfers —
             the amounts stay encrypted even as they are paid. The recipient was fixed
@@ -524,7 +524,7 @@ export default function Home() {
       {b?.phase === 2 && b.resettable && (
         <section className="card">
           <b>One deployment, many auctions — anyone can start the next one</b>
-          <p style={{ fontSize: 13, color: '#456', margin: '6px 0 10px' }}>
+          <p className="dim" style={{ fontSize: '0.85rem', margin: '6px 0 10px' }}>
             Resetting is permissionless, like every other step here: there is no
             operator in this system to ask. The contract refuses while any order of
             the settled batch is still unpaid, so nobody can wipe an escrow you have
@@ -535,7 +535,7 @@ export default function Home() {
             {busy ? 'working…' : 'Start a new batch'}
           </button>
           {(b.unpaid?.length ?? 0) > 0 && (
-            <span style={{ marginLeft: 10, fontSize: 13, color: '#666' }}>
+            <span className="dim" style={{ marginLeft: 'var(--s3)', fontSize: '0.85rem' }}>
               pay out the {b.unpaid!.length} remaining order
               {b.unpaid!.length === 1 ? '' : 's'} first
             </span>

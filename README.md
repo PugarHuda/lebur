@@ -515,6 +515,23 @@ still calling itself coercion-resistant. Loading the Snap in MetaMask Flask is
 still a human's job, because MetaMask's own RPC restrictions are the thing that
 put the viewing key in the Snap to begin with.
 
+### The design claims are tested, not asserted
+
+This README used to say the UI passes contrast, keeps focus rings, uses 44px
+targets, honours `prefers-reduced-motion` and survives a phone. All of that was
+written and none of it was checked, which is the same "claim stronger than the
+evidence" pattern the rest of this project spent its life removing. So it gets
+the same treatment: `quality.spec.ts` runs an axe scan over both pages, measures
+every control that spends gas, tabs into the page and reads back the computed
+outline, emulates reduced motion, and loads at 375px asserting the document does
+not scroll sideways.
+
+It found three real defects on the first run, all invisible on a desktop:
+`--fg-dim` measured ~3.6:1 against the card surface where 4.5:1 was claimed; a
+project/side `<select>` sized itself to its longest option and pushed the whole
+page wider than a phone; and links inside running text were distinguished by
+colour alone. Fixed, and the scan is now clean.
+
 ### The read path is tested against the deployed page
 
 `npm run test:e2e` drives [lebur.vercel.app](https://lebur.vercel.app) in a real

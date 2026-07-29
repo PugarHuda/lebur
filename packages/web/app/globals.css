@@ -11,7 +11,10 @@
   --border-strong: #334155;
   --fg: #f8fafc;
   --fg-muted: #94a3b8;
-  --fg-dim: #64748b;
+  /* Raised from #64748b, which measured ~3.6:1 against --surface and failed the
+     4.5:1 this project's README claims. Verified by an axe scan in e2e, not by
+     eye -- dim greys on dark surfaces are exactly where eyes are unreliable. */
+  --fg-dim: #7f8da3;
 
   /* Lebur's accent is amber: this is an auction, not a donation, and amber reads
      as heat and urgency where Lirih's green reads as growth. Sibling projects,
@@ -59,6 +62,11 @@ h3 { font-size: 1.05rem; font-weight: 600; }
 p { margin: 0 0 var(--s4); }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
+/* A link sitting INSIDE a paragraph must be distinguishable without colour --
+   colour alone fails for anyone who cannot separate these two hues, and axe
+   flags it. Standalone links (nav, buttons, table cells) keep the clean look;
+   only links embedded in running text get the underline. */
+p a, li a, dd a { text-decoration: underline; text-underline-offset: 2px; }
 
 .mono { font-family: var(--font-mono); font-size: 0.86em; }
 .dim { color: var(--fg-muted); }
@@ -117,6 +125,11 @@ input, select {
   min-height: 44px;
 }
 input:focus, select:focus { border-color: var(--accent); }
+/* A select sizes itself to its longest option, and "0 - Clean Water Initiative"
+   is wider than a 375px viewport. Without this the whole page scrolls sideways,
+   which is the classic symptom nobody sees on a desktop. */
+input, select { max-width: 100%; min-width: 0; }
+label { max-width: 100%; }
 
 .row { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: center; }
 
