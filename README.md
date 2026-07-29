@@ -8,12 +8,19 @@ Ethereum Sepolia.
 Built on [iExec Nox](https://docs.noxprotocol.io) (Intel TDX) for the WTF Hackathon
 Summer Edition.
 
-**Status:** `npx hardhat compile` clean, `node reference/lebur-reference.mjs` passing
-(~13,000 batch shapes), and **both end-to-end tests passing against the real Nox
-offchain stack** — encrypted submit, encrypted ladder scan, gateway public decrypt,
-Curve settlement, confidential payouts, with every trader's final balance decrypted
-and checked against the reference oracle to the wei. Not yet deployed to Sepolia: the
-deployer key is out of gas.
+**Status: live on Ethereum Sepolia**, on **this branch** — no revision gap between
+the code here and the code running. A batch of two sealed orders cleared and
+settled: 600 of the 1000 crossed inside the enclave and never touched the chain,
+and the 399.7 residual settled through one `exchange_received` against a real
+Curve pool. There is a **settled** batcher you can read and an **open** one you
+can trade against until 2026-08-05 ([both](#two-live-batchers-both-running-this-branch)).
+**The UI is live at [lebur.vercel.app](https://lebur.vercel.app)** — nothing to
+install. **11 tests pass**
+against the real Nox offchain stack — encrypted submit, encrypted ladder scan,
+gateway public decrypt, Curve settlement, confidential payouts, with every trader's
+final balance decrypted and checked against the reference oracle to the wei.
+`reference/lebur-reference.mjs` checks ~13,000 batch shapes, and every deployed
+contract is source-verified.
 
 **Privacy pattern: (B) Batch.** N private intents net inside our contract; the
 residual settles publicly. We are not claiming a single user's single trade is hidden
@@ -102,7 +109,7 @@ ERC-20 the pool can see are *the same operation*. No separate decrypt-and-trust 
 
 ```
 reference/lebur-reference.mjs      the specification. read this first
-packages/snap/                     MetaMask Snap: seal an order in-sandbox
+packages/snap/                     MetaMask Snap: in-sandbox VIEWING key (not encryption)
 packages/web/                      Next.js trader UI
 packages/contracts/
   contracts/LeburBatch.sol         the auction
@@ -111,11 +118,14 @@ packages/contracts/
   contracts/ICurve.sol             the Curve surface we touch
   contracts/mocks/MockCurvePool.sol  test double — Curve is Sepolia-only
   test/batch.e2e.test.ts           asserts against the reference oracle
+  test/guards.test.ts              nine guard tests: ladders, phases, paging, empty book
   scripts/verify-curve.ts          read-only proof of every Curve claim below
+  scripts/curve-config.ts          the factory/blueprint addresses, in one place
   scripts/deploy-pool.ts           deploy_plain_pool — DRY RUN unless BROADCAST=1
   scripts/deploy-sepolia.ts        deploy the batcher
   scripts/submit-order.ts          one real sealed order via the live gateway
   scripts/run-batch.ts             clear -> reveal -> settle -> payouts
+  verify-args.js                   constructor args for `verify blockscout`
 feedback.md                        for the iExec team
 ```
 
@@ -203,18 +213,22 @@ Gas **measured** by `npx hardhat test` against the real Nox stack, `T=4 / N=3`:
 
 | call | gas |
 |---|---|
-| `submitOrder` | ~840k–857k |
-| `clear()` — 209 encrypted ops | **2,921,563** |
-| `settle()` — 2× `finalizeUnwrap` + `exchange_received` | 939,142 |
-| `payout(i)` | ~680k each |
+| `submitOrder` | ~825k–842k |
+| `clear()` — 209 encrypted ops | **2,923,992** |
+| `settle()` — 2× `finalizeUnwrap` + `exchange_received` | 913,939 |
+| `payout(i)` | ~671k–688k each |
 | whole batch | **~8.4M** |
 
 That is **~14k gas per encrypted op**, which lines up with the independent calibration
 point from this author's sibling project on live Sepolia: a 164-op encrypted integer
 sqrt cost **2.05M gas** (~12.5k/op), with a gateway `encryptInput` round trip at
 **~2.3s**. So `T=4/N=3` is comfortable for a live demo, `T=8/N=5` is borderline, and
-anything larger gets pre-recorded. `MAX_TICKS` and `MAX_ORDERS` are both 8; the upgrade
-path is to paginate `clear()` over ticks and carry the argmax across transactions.
+anything larger gets pre-recorded.
+
+`MAX_TICKS` and `MAX_ORDERS` are both 8 — but they are **policy numbers, not gas
+numbers**, because `clearPaged(maxTicks)` scans the ladder across as many
+transactions as it takes. See [Clearing does not have to fit one
+transaction](#clearing-does-not-have-to-fit-one-transaction).
 
 An order costs **two** gateway encryptions, not three: side and limit tick ride packed
 as `side · 8 + tick` in one `euint16`, unpacked on-chain with `div`/`sub` because Nox
@@ -272,6 +286,16 @@ demo book, 25% of gross notional reaches the pool and 75% crosses invisibly.
 
 Known limits, stated rather than buried:
 
+- **A donation to the contract is ignored, not counted.** Settlement measures the
+  *delta* across `finalizeUnwrap`, not its own balance. It used to read the
+  balance — obviously correct, since the contract holds no plaintext coin between
+  batches, until you notice anyone can `transfer` either token straight to the
+  address for the price of one ERC-20 call. That inflated the published residual
+  and therefore `publicFootprint`, the single number this design offers as its
+  privacy claim, and pushed a stranger's tokens through the Curve leg as if a
+  trader had sold them. A donation now stays put and becomes confidential dust.
+  The e2e test grifts the batch mid-settlement and every residual assertion is
+  against the reference oracle, so a leak of even a wei fails it.
 - **The residual's side is public**, by construction. Publishing "the batch was net
   long 400 coin0" tells you demand was heavy. That is inherent to settling on a public
   AMM, and it is why both residuals are computed and both revealed — skipping the zero
@@ -293,9 +317,11 @@ Known limits, stated rather than buried:
   permanent rounding buffer. That is deliberate: a positive buffer is what guarantees
   the last payout of a batch is never the one ERC-7984 caps a wei short. There is no
   sweep function, because a sweep is a lever an operator could pull mid-batch.
-- **Single batch per deployment.** One book, one clearing, one settlement. Recurring
-  epochs would need the state reset and re-armed; nothing in the design prevents it,
-  it is simply not built.
+- **One batch at a time.** A deployment runs many auctions in sequence via
+  [`startNewBatch`](#one-deployment-many-auctions), but never two concurrently:
+  there is a single order book, and a reset is refused until every order of the
+  previous batch has been paid. Concurrent books would need the whole aggregate
+  set indexed by epoch, which is not built.
 
 ## Prior art
 
@@ -374,49 +400,137 @@ rather than a fully-netted batch that would never touch Curve. Both orders come
 from one address because the mechanism keys on orders, not identities — worth
 stating plainly rather than implying two independent traders.
 
+## Two live batchers, both running this branch
+
+Re-run on 2026-07-29 against the same Curve pool and coins, on the contract as it
+stands here. A settled batch is a read-only artefact, so there is also an open one
+you can actually trade against.
+
+### Settled — read the finished auction
+
+[`0x6a022daa…`](https://eth-sepolia.blockscout.com/address/0x6a022daacef56e7751828b17a3da3486950008b2)
+holds its result in readable state:
+
+| | |
+|---|---|
+| clearing tick | **2** (price 1.0005) |
+| residual to the public pool | **399.7 lUSDA** / 0 lUSDB |
+| Curve leg | used — received **399.620286334689100000 lUSDB** |
+| `publicFootprint` | **399.7** |
+| paid / orders | 2 / 2 · no plaintext coin stranded |
+
+Measured gas: `clear()` **2,147,944** · `settle()` 943,431 · `payout()` 594k/577k
+· `submitOrder` 764k/747k.
+
+### Open — go and trade against it
+
+[`0x5f4a77e5…`](https://eth-sepolia.blockscout.com/address/0x5f4a77e5d14acb63f3d344dd186d1cd9c94c0ddd)
+takes orders until **2026-08-05**, and it is what `packages/web/.env.local` points
+at. This one also settled a batch first, then **reopened itself** with
+`startNewBatch` (119k gas, epoch 0 → 1) — so "one deployment, many auctions" is
+not a claim in this README, it is the state that address is in.
+
+That reset is also why its revealed values read zero: the plaintext mirrors are
+deliberately cleared, because a stale clearing price would misreport an auction
+that has not happened yet.
+
+| Contract | Address |
+|---|---|
+| LeburBatch — settled | `0x6a022daacef56e7751828b17a3da3486950008b2` |
+| LeburBatch — open until 2026-08-05 | `0x5f4a77e5d14acb63f3d344dd186d1cd9c94c0ddd` |
+| cUSDA / cUSDB — settled batch | `0xd9953a0f…638b` / `0x649bca4a…8a1a` |
+| cUSDA / cUSDB — open batch | `0xc8b97213…e067` / `0x106251f4…de2a` |
+| Curve StableSwap-NG pool, shared | `0x29f2087bc6489e9FC9f35CA34132Fca9158de7A0` |
+| lUSDA / lUSDB, shared | `0x838204BC…e34F` / `0x8A00F10b…7CB7` |
+
+The [2026-07-27 batch](https://eth-sepolia.blockscout.com/address/0x04c5a38af74d9f40c444dcb90f5d66724998afbd)
+produced the same result on an older revision of the contract.
+
 ## Frontend
 
-`packages/web` — a Next.js trader UI for a live batch. It shows the sealed order
-count, the price ladder, and the phase; it places a sealed order end to end
-(mint → wrap → the dust wrap that keeps your side private → two gateway
-encryptions → `submitOrder`); and once the window closes **anyone** can clear the
-batch from the page. After settlement it reports the clearing price, the residual
-that reached the public pool, and the `publicFootprint` — the total value that
-ever became visible, set against the sealed orders whose sizes never do.
+`packages/web` — a Next.js trader UI for a live batch. The whole permissionless
+lifecycle is a button, because a property nobody can exercise is a claim rather
+than a feature:
+
+- **Seal an order** end to end — mint → wrap → the dust wrap that keeps your side
+  private → two gateway encryptions → `submitOrder`, with the viewing mode
+  (Snap-held key or EOA fallback) stated rather than chosen silently.
+- **Clear the batch** — once the window closes, anyone can run the encrypted
+  ladder scan from the page.
+- **Reveal and settle** — the three gateway-signed decryptions (clearing tick and
+  both residuals) and the Curve leg, in one button. The contract verifies every
+  signature itself, so whoever presses it supplies proofs rather than figures and
+  cannot influence a single number.
+- **Read your own order back** — gasless, gated by the viewer role granted at
+  submit time, so it works for your orders and fails for everyone else's. The size
+  sits on-chain the whole time; what makes it private is that only you can turn it
+  into a number.
+- **Collect the fills** — `payout` per order, also permissionless, also
+  idempotent. The recipient was fixed when the order was sealed, so pushing
+  someone else's payout can only ever pay them, and the fill and refund both move
+  as confidential transfers.
+- **Start the next auction** — `startNewBatch` on a settled deployment, refused
+  by the contract until every order is paid. The page probes `epoch` first and
+  says so plainly when the configured address predates the function, rather than
+  offering a button that would revert.
+
+It reports the clearing price, the residual that reached the public pool, and the
+`publicFootprint` — the total value that ever became visible, against sealed
+orders whose sizes never do. A settled batch says it is settled and explains what
+you can still do with it; it does not leave a dead order form on screen.
+
+**Live: [lebur.vercel.app](https://lebur.vercel.app)** — a landing page at `/`
+with the settled batch's clearing price, public footprint and Curve fill read live
+from chain, and the trader UI at `/app`. Nothing to install.
+
+The UI shares a design system with the sibling project — same tokens, same type
+scale, amber where Lirih is green, because this is an auction and that is funding.
+Tabular figures on every number, 44px minimum targets, visible focus rings,
+`prefers-reduced-motion` honoured, and inline SVG rather than emoji for icons.
+
+`packages/web/.env.local` is committed, so a local run reaches the same live state:
 
 ```bash
 cd packages/web && npm install && npm run dev
 ```
 
-Addresses come from `packages/web/.env.local`; `scripts/deploy-sepolia.ts` prints
-the block to paste. It is preconfigured for the live batch above.
+### The browser is tested too, against the deployed page
 
-## What is deployed vs what is in this branch
+`npm run test:e2e` drives [lebur.vercel.app](https://lebur.vercel.app) in a real
+Chromium and asserts against the live batch. `tsc` and `next build` are both clean
+on code that throws the moment a browser runs it — a barrel import pulling in a
+peer dependency, a viem default RPC that is dead, an ABI that no longer decodes a
+deployed contract. All three have happened in this project and none was caught
+before the page was opened.
 
-The live batch above runs the contract as of commit **`81d020a`**, and the
-Blockscout verification matches that deployed bytecode. `main` has moved on: the
-current source is 12,416 runtime bytes against 11,834 on-chain, so they are
-deliberately **not** the same code.
+Four tests, no wallet: that phase, order count, deadline and the price ladder
+really come back from Sepolia through Multicall3; that the page offers exactly the
+lifecycle step the batch is ready for and never the one that would revert; that
+`publicFootprint` is read only once it exists, since it reverts `WrongPhase`
+before settlement; and that the read-your-own-order panel appears only when there
+is a book to read. A `pageerror` or `console.error` fails the run.
 
-Added after the batch was deployed, and therefore in this repo but not at that
-address:
+One of these caught its own author: the spec asserted the enum name `Open` while
+the UI renders `Accepting orders`. It passed review and failed the browser, which
+is the entire argument for the file existing.
 
-- `startNewBatch` — one deployment runs many auctions, with the `paidCount`
-  guard and the bounded submit window
-- `epoch` / `paidCount` accounting
-
-The settled batch is unaffected: the auction mechanism, the encrypted ladder
-scan and the Curve settlement are identical in both revisions. Redeploying to
-close the gap costs ~3.6M gas and the deployer holds 0.0018 ETH, so this README
-names the revision rather than implying the address runs `main`.
+```bash
+cd packages/web && npm run test:e2e            # against the deployed page
+BASE=http://localhost:3000 npm run test:e2e    # against your own dev server
+```
 
 ## Verified source
 
+Every address below is verified against **this branch**, so the code you are
+reading and the code that is running are the same code — there is no revision gap
+to explain away.
+
 | Contract | Verified |
 |---|---|
-| LeburBatch | [Blockscout](https://eth-sepolia.blockscout.com/address/0x04c5a38af74d9f40c444dcb90f5d66724998afbd#code) |
-| cUSDA | [Sourcify](https://sourcify.dev/server/repo-ui/11155111/0x9332437d2abdcca57143b96d6d1fce1ad51e7c35) |
-| cUSDB | [Sourcify](https://sourcify.dev/server/repo-ui/11155111/0x37e9f9e43c929722cc61475db3eb053575e85efd) |
+| LeburBatch — settled | [Blockscout](https://eth-sepolia.blockscout.com/address/0x6a022daacef56e7751828b17a3da3486950008b2#code) |
+| LeburBatch — open | [Blockscout](https://eth-sepolia.blockscout.com/address/0x5f4a77e5d14acb63f3d344dd186d1cd9c94c0ddd#code) |
+| cUSDA / cUSDB (settled batch) | [Sourcify](https://sourcify.dev/server/repo-ui/11155111/0xd9953a0fcb3ad1077bfd8978a6bdef3a3f05638b) · [Sourcify](https://sourcify.dev/server/repo-ui/11155111/0x649bca4a169a0a9bcc386e2a5e4f15aa3b238a1a) |
+| cUSDA / cUSDB (open batch) | [Sourcify](https://sourcify.dev/server/repo-ui/11155111/0xc8b9721376cf230af9f4b0978ea561db571ae067) · [Sourcify](https://sourcify.dev/server/repo-ui/11155111/0x106251f45c79655f49997180323ce92af665de2a) |
 | lUSDA | [Sourcify](https://sourcify.dev/server/repo-ui/11155111/0x838204BC3D82B29E3697Bfe9A17662c57943e34F) |
 | lUSDB | [Sourcify](https://sourcify.dev/server/repo-ui/11155111/0x8A00F10b198f8cC9266d6E330b9792E395707CB7) |
 
@@ -428,17 +542,21 @@ be expressed positionally, so it can never be verified that way.
 
 ## Tests
 
-**10 passing** against the real Nox offchain stack:
+**11 passing** against the real Nox offchain stack:
 
 - the full round trip — sealed submit, encrypted ladder scan, gateway public
   decrypt, Curve settlement, confidential payouts — with every trader's final
   balance checked against the reference oracle to the wei
 - the degraded path: when the pool cannot meet the clearing price the Curve leg is
-  skipped, the residual is re-wrapped and limits are still honoured
-- eight guard tests: malformed ladders rejected at construction (empty, zero
+  skipped, the residual is re-wrapped and limits are still honoured. This one
+  clears **one tick per transaction**, so the same wei-exact oracle comparison also
+  proves a paginated argmax agrees with a single-pass one
+- nine guard tests: malformed ladders rejected at construction (empty, zero
   price, flat, descending), clearing refused before the window closes, orders
-  refused after it, `payout` and `publicFootprint` refused before settlement, and
-  an empty book that still clears rather than trapping the batch in Open forever
+  refused after it, `payout` and `publicFootprint` refused before settlement, an
+  empty book that still clears rather than trapping the batch in Open forever, and
+  a paged scan that refuses a zero page, stays Open until the last tick, and can
+  be finished by the unpaged entry point
 
 ```bash
 cd packages/contracts && npx hardhat test   # needs Docker
@@ -474,6 +592,26 @@ The numbers are also a check on the mechanism rather than just a log: a bid of
 the residual is `≈ 399.5` coin1-equivalent — which is what cleared, and the tick
 the max-volume/min-imbalance rule should pick.
 
+## Clearing does not have to fit one transaction
+
+A full ladder scan is `T·(6N+17)+11` sequential encrypted ops, and because nothing
+can short-circuit on a secret, that is the worst case **every** time — so the
+ladder and the book together used to have to fit one block, one Runner pass, one
+transaction. `clearPaged(maxTicks)` scans a slice and stops; call it until the
+phase flips to Cleared. `clear()` is the same thing with an unbounded page.
+
+The carry is the whole cost: six encrypted handles per page, written down and
+re-permitted, because an unlisted handle is dead in the next transaction. Pausing
+mid-argmax is safe for one specific reason — paging can only begin after
+`submitDeadline`, and `submitOrder` refuses past it, so every page scans its ticks
+against exactly the book the first page saw. The phase stays `Open` until the last
+tick lands: a half-scanned argmax holds a *leader*, not an answer, and settling on
+it would clear the whole batch at the wrong price.
+
+The e2e degraded-path test clears one tick per transaction and still matches the
+reference oracle to the wei on every trader's final balance, which is the real
+assertion that a boundary-crossing argmax gives the same answer as a single pass.
+
 ## One deployment, many auctions
 
 `startNewBatch(deadline)` resets a settled batch for a new epoch, so the batcher
@@ -493,22 +631,36 @@ revealed plaintext mirrors are, because those are public and a stale clearing
 price would misreport an auction that has not happened yet. The e2e test asserts
 exactly that after a real settlement.
 
-## Sealing the order inside your wallet
+## The viewing key lives inside your wallet
 
-`packages/snap` is a MetaMask Snap that encrypts an order **inside the SES
-sandbox**: RSA keygen, ECDH/HKDF/AES-GCM and the gateway call all happen there,
-so the size and side never enter a web page's JavaScript.
+`packages/snap` is a MetaMask Snap that holds the **viewing key** for your orders.
+It is derived from your SRP via `snap_getEntropy`, lives in the SES sandbox, and
+is granted the Nox viewer role — so you can decrypt your own order inside
+MetaMask and **cannot sign anything that proves it to a briber**. Without the
+Snap your EOA holds that role and *can*, so the UI states which mode is active
+rather than choosing silently.
 
-The viewing key is derived from the user's SRP via `snap_getEntropy`, not from
-their EOA — deliberately, because `eth_signTypedData_v4` is on MetaMask's
-`BLOCKED_RPC_METHODS` for snaps and an EOA-held viewing key is one a briber can
-ask you to sign with. The Snap identity is granted the Nox viewer role instead,
-so you can read your own escrow and cannot prove it to anyone.
+### It used to encrypt orders too, and that was broken
 
-The page falls back to encrypting via the gateway itself when the Snap is absent.
-That still seals the order on-chain, but the EOA then holds the viewing role and
-**can** prove what you traded — so the UI says which mode is active rather than
-choosing silently.
+Worth stating plainly, because it is the failure that "builds clean and passes SES
+evaluation" was never going to catch, and because the fix narrows a claim this
+README previously made.
+
+`Nox.fromExternal` requires the address that **owns an input proof** to be the
+direct `msg.sender` of the transaction consuming it. The Snap encrypted with its
+own SRP-derived identity while `submitOrder` was sent by the user's EOA, so every
+Snap-sealed order would have reverted `InvalidProof` — and the page *preferred*
+the Snap when it was installed. Installing the Snap turned a working trader into a
+broken one. Nothing caught it because the Snap had never been loaded in a wallet:
+it compiled, it survived SES, and no test exercised the one call that could not
+work.
+
+Encryption is therefore the EOA's job — it is the only key that can satisfy
+`fromExternal` — and the gateway still does it inside its own TEE. What is
+genuinely lost is the claim that *the size never enters page JavaScript*: that was
+an over-claim, and `fromExternal`'s binding rules it out for any wallet-signed
+transaction. What survives is the property that actually mattered, which is that
+nobody, including you, can produce a proof of what you traded.
 
 ```bash
 cd packages/snap && npm install && npm run build && npm run serve   # localhost:8080
