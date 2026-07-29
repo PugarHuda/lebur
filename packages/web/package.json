@@ -2,7 +2,12 @@
   "name": "@lebur/web",
   "version": "0.0.0",
   "private": true,
-  "scripts": { "dev": "next dev", "build": "next build", "start": "next start" },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test:e2e": "playwright test"
+  },
   "dependencies": {
     "@iexec-nox/handle": "0.1.0-beta.13",
     "ethers": "^6",
@@ -12,6 +17,7 @@
     "viem": "^2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.0",
     "@types/node": "^22.20.1",
     "@types/react": "^19",
     "typescript": "^5"
