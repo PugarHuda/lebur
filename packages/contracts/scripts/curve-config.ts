@@ -6,6 +6,22 @@ export const CURVE_BLUEPRINT = '0xE12374F193f91f71CE40D53E0db102eBaA9098D5' as c
 export const CURVE_MATH = '0x2Cad7B3e78E10BcbF2Cc443ddd69ca8bCC09a758' as const;
 export const CURVE_VIEWS = '0x9d3975070768580f755D405527862ee126d0eA08' as const;
 
+/// THE claim to check, and the one iExec's team pointed at: the POOL
+/// IMPLEMENTATION, not the factory. `exchange_received` lives on the pool, so the
+/// pool blueprint is what has to be unmodified for the settlement seam to be
+/// unmodified. Verified byte-identical against mainnet's `pool_implementations(0)`
+/// (0xDCc91f930b42619377C200BA05b7513f2958b202), 24,031 bytes on both chains.
+///
+/// Do NOT compare two DEPLOYED pools instead: Vyper blueprint deployment bakes
+/// constructor-time immutables (coins, decimals, name, symbol) into the runtime,
+/// so our pool is 23,635 bytes against a mainnet pool's 23,482 and the hashes
+/// differ. That difference is configuration, not modification, and comparing at
+/// that level would read as a modified protocol when nothing is modified.
+export const MAINNET_BLUEPRINT_CODEHASH =
+  '0xe2a3dd8d583b86eb7f562b4307aab6e5a373ddb5c6b348e4cf63d41914f35a9f';
+
+/// A second, weaker data point. The factory only deploys; it is not on the
+/// settlement path.
 /// The Sepolia factory's codehash is byte-identical to the mainnet StableSwap-NG
 /// factory. That equality is the whole "unmodified Curve" claim, checkable in seconds.
 export const MAINNET_FACTORY_CODEHASH =

@@ -190,6 +190,40 @@ td.num { text-align: right; font-family: var(--font-mono); font-weight: 700;
 .stats dd small { font-size: 0.7rem; font-family: var(--font-display); color: var(--fg-muted); }
 .stats dd.accent { background: var(--accent); padding: 0 4px; display: inline-block; }
 
+/* ── price ladder (Lebur) ─────────────────────────────────────────────── */
+/* A uniform-price auction IS its ladder: the whole mechanism is "where on this
+   list does your order sit". A <select> of tick numbers hid the one structure
+   the design is about, so the ladder is the control now — you pick a price, not
+   an index. Rendered high-to-low, the way an order book reads. */
+.ladder { display: grid; gap: 0; border: var(--bd); box-shadow: var(--shadow);
+          margin-bottom: var(--s5); background: var(--surface); }
+.tick {
+  display: grid; grid-template-columns: auto 1fr auto; gap: var(--s3);
+  align-items: center; text-align: left;
+  background: var(--surface); border: 0; border-bottom: 2px solid var(--ink);
+  box-shadow: none; border-radius: 0;
+  padding: var(--s3) var(--s4); min-height: 52px; width: 100%;
+  font: 700 0.95rem var(--font-mono); text-transform: none; letter-spacing: 0;
+  color: var(--ink);
+}
+.ladder .tick:last-child { border-bottom: 0; }
+.tick:hover:not(:disabled) { background: var(--violet); }
+.tick[aria-pressed='true'] { background: var(--accent); }
+/* Muted ink survives on white and on cream, and fails on the accent — #3a3a3a on
+   hot red measures ~3.9:1. On an accent block the sub-labels go full ink. */
+.tick[aria-pressed='true'] .idx,
+.tick[aria-pressed='true'] .side-hint,
+.tick:hover:not(:disabled) .idx,
+.tick:hover:not(:disabled) .side-hint { color: var(--ink); }
+.tick .idx { font-size: 0.72rem; color: var(--fg-muted); }
+.tick .cleared-at {
+  font-family: var(--font-display); font-weight: 700; font-size: 0.68rem;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  border: 2px solid var(--ink); padding: 2px 8px; background: var(--accent);
+}
+.tick .side-hint { font-family: var(--font-display); font-weight: 500;
+                   font-size: 0.72rem; color: var(--fg-muted); text-align: right; }
+
 .hero { padding-top: var(--s8); padding-bottom: var(--s7); }
 .hero p.lede { font-size: 1.2rem; max-width: 34em; }
 .eyebrow { display: inline-block; font-family: var(--font-mono); font-size: 0.75rem;

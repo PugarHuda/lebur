@@ -56,8 +56,17 @@ test('renders, and reads the live batch from chain', async ({ page }) => {
 
   // The ladder is read from the contract, not hardcoded here — it is the
   // auction's grammar and it has to come from the deployment being displayed.
-  // The ladder is read from the contract, not hardcoded here.
-  await expect(page.getByText(/Price ladder/)).toContainText('0.9995');
+  // The ladder is read from the contract and rendered as the CONTROL, not as
+  // prose: a uniform-price auction is its ladder, so picking a price has to be
+  // the interaction rather than choosing an index from a dropdown.
+  const ladder = page.locator('.ladder');
+  await expect(ladder.locator('button.tick').first()).toBeVisible({ timeout: 30_000 });
+  await expect(ladder).toContainText('0.9995');
+  // High-to-low, the way an order book reads.
+  const prices = await ladder.locator('button.tick').allInnerTexts();
+  expect(prices.length).toBeGreaterThanOrEqual(3);
+  const nums = prices.map((t) => Number(t.match(/[\d.]+$|1\.\d{4}|0\.\d{4}/)?.[0] ?? 0)).filter(Boolean);
+  expect(nums, 'ladder must render highest price first').toEqual([...nums].sort((a, b) => b - a));
 
   expect(problems, 'page must load with no errors').toEqual([]);
 });

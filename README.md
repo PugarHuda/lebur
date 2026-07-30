@@ -22,6 +22,36 @@ final balance decrypted and checked against the reference oracle to the wei.
 `reference/lebur-reference.mjs` checks ~13,000 batch shapes, and every deployed
 contract is source-verified.
 
+## What is new, and what is not
+
+**Every line of this codebase was written during the WTF Hackathon Summer
+Edition. No code was carried over from Diam**, the confidential OTC desk the same
+author built for the Vibe Coding hackathon, and nothing else pre-existing was
+reused. The only third-party code here is upstream and unmodified: iExec Nox,
+OpenZeppelin, and Curve StableSwap-NG.
+
+Diam and Lebur are different systems, and the difference is the mechanism, not
+the packaging. Diam was a **one-maker OTC desk** running a sealed-bid **Vickrey
+(second-price)** RFQ that settled **peer-to-peer on Arbitrum**. Lebur is a
+**many-to-many uniform-price call auction** whose net residual settles into a
+**third-party AMM on Ethereum Sepolia**. Different market design, different
+integrated protocol, different chain.
+
+Confirmed with the iExec team before building, and worth distinguishing from the
+nearest work among the Vibe submissions — all of which lived under one
+"Confidential DeFi & RWA" track rather than an auction category:
+
+- **Umbra Protocol** (Vibe 1st place) runs *liquidations* as sealed-bid auctions:
+  one distressed position, many bidders, a winner. Lebur has no auctioneer and no
+  single item — every order is simultaneously demand and supply on a shared
+  ladder, and they clear against each other at one price.
+- **ShadowBid** is a single-item sealed-bid auction by commit–reveal; bid amounts
+  become **plaintext at the reveal phase** and Nox only wraps the winner's
+  payment. Lebur never reveals a bid at all: the clearing computation runs on
+  encrypted state and the only decrypted values are the price and the residual.
+- **Obscura** is single-item, one seller and many bidders, with an encrypted
+  reserve price and a TEE picking a winner. No netting, no AMM.
+
 **Privacy pattern: (B) Batch.** N private intents net inside our contract; the
 residual settles publicly. We are not claiming a single user's single trade is hidden
 from a public AMM — a public pool has to see what it is being asked to trade. What is
@@ -244,12 +274,29 @@ else found this. Everything below was confirmed by direct RPC, re-run by
 |---|---|
 | StableSwap-NG Factory | `0xfb37b8D939FFa77114005e61CFc2e543d6F49A81` — 178 pools |
 | Pool blueprint | `0xE12374F193f91f71CE40D53E0db102eBaA9098D5` |
-| Factory codehash | `0xb78c1b32cd364260f3fa497ccc7e98c73cdc26bdae2d3635e763ee8b59a1d6fd` — **byte-identical to mainnet** |
+| **Pool blueprint codehash** | `0xe2a3dd8d583b86eb7f562b4307aab6e5a373ddb5c6b348e4cf63d41914f35a9f` — **byte-identical to mainnet**, 24,031 bytes both chains |
+| Factory codehash | `0xb78c1b32cd364260f3fa497ccc7e98c73cdc26bdae2d3635e763ee8b59a1d6fd` — also byte-identical to mainnet |
 | `exchange_received` | selector `0xafb43012`, present in live pool bytecode |
 | `deploy_plain_pool` | selector `0x5bcd3d83`, 11 arguments (two other plausible overloads confirmed **absent**) |
 
 There is no Router NG and no AddressProvider on Sepolia, so Lebur talks to the pool
 directly. That "unmodified" claim is checkable by a judge in one `eth_getCode`.
+
+**Compare the pool blueprint, not the factory** — and not two deployed pools
+either. `exchange_received` lives on the *pool*, so the pool implementation is
+what has to be unmodified for the settlement seam to be unmodified; the factory
+only deploys, and is not on the settlement path. Sepolia's blueprint
+`0xE12374F1…` is byte-identical to mainnet's `pool_implementations(0)`
+(`0xDCc91f93…`) at 24,031 bytes, and `scripts/verify-curve.ts` checks exactly
+that. Comparing two *deployed* pools instead would fail and look damning for no
+reason: Vyper blueprint deployment bakes constructor-time immutables (coins,
+decimals, name, symbol) into the runtime, so ours is 23,635 bytes against a
+mainnet pool's 23,482. That is configuration, not modification.
+
+**`exchange_received` is disabled on pools holding rebasing tokens**, by design
+upstream — a rebasing balance makes "the delta the pool observed" meaningless.
+Both of our coins are plain non-rebasing ERC-20s, which is a precondition of this
+settlement seam and not an accident of the faucet choice.
 
 Selector presence is proved by **scanning the deployed runtime bytecode**, not by
 guessing at revert strings: an `eth_call` to `exchange_received` reverts whether the
@@ -331,6 +378,13 @@ and Penumbra and Renegade run sealed order flow in ZK. What is specific here is 
 ladder scan, an argmax carrying a proper max-volume/min-imbalance tie-break, and
 pro-rata fills — rather than a netting pass that reveals one aggregate. And the
 residual settles against an unmodified production AMM, not a bespoke venue.
+
+Within iExec's own cohort the nearest work is sealed-bid, single-item and
+auctioneer-shaped: Umbra Protocol auctions a distressed position, ShadowBid
+reveals bid amounts in plaintext at a reveal phase, Obscura has one seller and an
+encrypted reserve. None of them nets many two-sided intents against each other,
+and none settles into an AMM. See [What is new, and what is
+not](#what-is-new-and-what-is-not).
 
 ## Cost of going live, measured (not estimated)
 
@@ -457,9 +511,13 @@ produced the same result on an older revision of the contract.
 lifecycle is a button, because a property nobody can exercise is a claim rather
 than a feature:
 
-- **Seal an order** end to end — mint → wrap → the dust wrap that keeps your side
-  private → two gateway encryptions → `submitOrder`, with the viewing mode
-  (Snap-held key or EOA fallback) stated rather than chosen silently.
+- **Pick a price on the ladder, then seal an order.** The ladder is the control,
+  rendered high-to-low the way a book reads: a uniform-price auction *is* its
+  ladder, and a dropdown of tick indices hid the one structure the whole design is
+  about. Then mint → wrap → the dust wrap that keeps your side private → two
+  gateway encryptions → `submitOrder`, with the viewing mode (Snap-held key or EOA
+  fallback) stated rather than chosen silently. After a clearing, the tick that
+  cleared is marked on the ladder itself.
 - **Clear the batch** — once the window closes, anyone can run the encrypted
   ladder scan from the page.
 - **Reveal and settle** — the three gateway-signed decryptions (clearing tick and

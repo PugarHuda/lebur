@@ -6,7 +6,8 @@
 // docs do not document Sepolia at all, so RPC is the only source of truth.
 import { createPublicClient, http, keccak256, toHex, getAddress } from 'viem';
 import { sepolia } from 'viem/chains';
-import { ICURVE_FACTORY, CURVE_BLUEPRINT, MAINNET_FACTORY_CODEHASH } from './curve-config.ts';
+import { ICURVE_FACTORY, CURVE_BLUEPRINT, MAINNET_FACTORY_CODEHASH,
+  MAINNET_BLUEPRINT_CODEHASH } from './curve-config.ts';
 
 const factoryAbi = [
   { type: 'function', name: 'pool_count', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
@@ -26,6 +27,12 @@ const poolAbi = [
   },
 ] as const;
 
+// This script runs standalone (`node --experimental-strip-types`), so it never
+// gets the .env that hardhat loads for every other script here — and the drpc
+// fallback below flakes on eth_call. Load it explicitly rather than making the
+// documented invocation the unreliable one.
+try { process.loadEnvFile(new URL('../.env', import.meta.url)); } catch {}
+
 const client = createPublicClient({
   chain: sepolia,
   transport: http(process.env.SEPOLIA_RPC_URL ?? 'https://sepolia.drpc.org'),
@@ -41,6 +48,13 @@ async function main() {
   const hash = keccak256(code ?? '0x');
   console.log(`${ok(!!code && code.length > 2)} factory has code (${((code?.length ?? 2) - 2) / 2} bytes)`);
   console.log(`${ok(hash === MAINNET_FACTORY_CODEHASH)} factory codehash == mainnet  ${hash}`);
+
+  // The one that actually matters: exchange_received lives on the POOL, so the
+  // pool blueprint is what has to be unmodified for the settlement seam to be.
+  const bpCode = await client.getCode({ address: CURVE_BLUEPRINT });
+  const bpHash = keccak256(bpCode ?? '0x');
+  console.log(`${ok(bpHash === MAINNET_BLUEPRINT_CODEHASH)} POOL BLUEPRINT codehash == mainnet  ${bpHash}`);
+  console.log(`   ${((bpCode?.length ?? 2) - 2) / 2} bytes, against mainnet pool_implementations(0)`);
 
   const bp = await client.getCode({ address: CURVE_BLUEPRINT });
   console.log(`${ok(!!bp && bp.length > 2)} pool blueprint has code`);

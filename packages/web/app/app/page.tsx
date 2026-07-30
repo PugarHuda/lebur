@@ -397,18 +397,46 @@ export default function Home() {
       {view === 'trade' && (
       <>
 
-      <p className="dim" style={{ fontSize: '0.9rem', marginBottom: 'var(--s5)' }}>
-        Price ladder{' '}
-        <span className="mono">
-          {(b?.ladder ?? []).map((p) => (Number(p) / 1e18).toFixed(4)).join(' · ') || '…'}
-        </span>
-        {' '}— public on purpose: the ladder is the auction&apos;s grammar, and price
-        discovery is what a uniform-price auction is for. What stays secret is where
-        on it each order sits, and how big it is.
+      <h2 style={{ marginBottom: 'var(--s3)' }}>Pick your price</h2>
+      <p className="dim" style={{ fontSize: '0.95rem' }}>
+        The ladder is public on purpose — it is the auction&apos;s grammar, and price
+        discovery is what a uniform-price auction is for. What stays secret is
+        <strong> where on it your order sits, and how big it is</strong>. A bid is
+        eligible at its limit and below; an ask at its limit and above.
       </p>
+
+      {/* The ladder IS the control. A dropdown of tick indices hid the one
+          structure this whole design is about. High-to-low, the way a book reads. */}
+      <div className="ladder">
+        {(b?.ladder ?? []).length === 0 && <p className="dim" style={{ padding: 'var(--s4)', margin: 0 }}>reading the ladder…</p>}
+        {(b?.ladder ?? []).map((price, i) => i).reverse().map((i) => {
+          const price = b!.ladder[i];
+          const clearedHere = b !== undefined && b.phase >= 1 && Number(b.tick) === i;
+          return (
+            <button
+              key={i}
+              className="tick"
+              aria-pressed={String(i) === tick}
+              disabled={!open}
+              onClick={() => setTick(String(i))}
+              aria-label={`limit tick ${i}, price ${(Number(price) / 1e18).toFixed(4)}`}
+            >
+              <span className="idx">t{i}</span>
+              <span>{(Number(price) / 1e18).toFixed(4)}</span>
+              {clearedHere
+                ? <span className="cleared-at">cleared here</span>
+                : <span className="side-hint">{side === 'bid' ? 'bid pays up to this' : 'ask sells down to this'}</span>}
+            </button>
+          );
+        })}
+      </div>
 
       <section className="card">
         <b>Place a sealed order</b>
+        <p className="dim" style={{ fontSize: '0.85rem', margin: 'var(--s2) 0 var(--s3)' }}>
+          Limit: <strong>tick {tick} · {b?.ladder?.[Number(tick)] ? (Number(b.ladder[Number(tick)]) / 1e18).toFixed(4) : '—'}</strong>
+          {' '}— chosen on the ladder above.
+        </p>
         <div className="row" style={{ marginTop: 'var(--s3)' }}>
           <label>
             side{' '}
@@ -418,14 +446,6 @@ export default function Home() {
             </select>
           </label>
           <label>amount <input size={8} value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
-          <label>
-            limit tick{' '}
-            <select value={tick} onChange={(e) => setTick(e.target.value)}>
-              {(b?.ladder ?? []).map((p, i) => (
-                <option key={i} value={i}>{i} — {(Number(p) / 1e18).toFixed(4)}</option>
-              ))}
-            </select>
-          </label>
         </div>
         <div className="row" style={{ marginTop: 'var(--s4)' }}>
           <button disabled={busy || !open} onClick={() => run(submit)}>
