@@ -409,7 +409,7 @@ export default function Home() {
 
       <section className="card">
         <b>Place a sealed order</b>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+        <div className="row" style={{ marginTop: 'var(--s3)' }}>
           <label>
             side{' '}
             <select value={side} onChange={(e) => setSide(e.target.value as 'bid' | 'ask')}>
@@ -427,7 +427,7 @@ export default function Home() {
             </select>
           </label>
         </div>
-        <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+        <div className="row" style={{ marginTop: 'var(--s4)' }}>
           <button disabled={busy || !open} onClick={() => run(submit)}>
             {busy ? 'working…' : 'Submit sealed order'}
           </button>
@@ -553,7 +553,7 @@ export default function Home() {
             on-chain the entire time — what makes it private is that only you can turn
             it into a number.
           </p>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div className="row">
             <label>order id <input size={4} value={myOrderId} onChange={(e) => setMyOrderId(e.target.value)} /></label>
             <button disabled={busy} onClick={() => run(decryptMyOrder)}>Decrypt my order</button>
           </div>

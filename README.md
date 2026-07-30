@@ -426,7 +426,12 @@ Measured gas: `clear()` **2,147,944** · `settle()` 943,431 · `payout()` 594k/5
 
 [`0x5f4a77e5…`](https://eth-sepolia.blockscout.com/address/0x5f4a77e5d14acb63f3d344dd186d1cd9c94c0ddd)
 takes orders until **2026-08-05**, and it is what `packages/web/.env.local` points
-at. This one also settled a batch first, then **reopened itself** with
+at. Six sealed orders are already in the book, chosen to cover distinct
+behaviours rather than to look busy: two that cross, two that are **out of the
+money** on opposite sides and will be refunded whole, one placed from a headless
+browser by the wallet-injected Playwright spec, and one at **1,000,000 — the
+`MAX_ORDER` clamp boundary**, so the encrypted clamp in `submitOrder` has an
+on-chain execution and not just a unit test. This one also settled a batch first, then **reopened itself** with
 `startNewBatch` (119k gas, epoch 0 → 1) — so "one deployment, many auctions" is
 not a claim in this README, it is the state that address is in.
 

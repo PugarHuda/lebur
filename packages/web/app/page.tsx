@@ -91,7 +91,7 @@ export default function Landing() {
           </div>
           <div className="card">
             <div className="dim" style={{ fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Public footprint</div>
-            <div className="stat" style={{ color: 'var(--accent)' }}>{fmt(done?.footprint)}</div>
+            <div className="stat"><span className="accent">{fmt(done?.footprint)}</span></div>
             <div className="dim" style={{ fontSize: '0.85rem' }}>all the value that ever became visible</div>
           </div>
           <div className="card">
