@@ -515,6 +515,13 @@ still calling itself coercion-resistant. Loading the Snap in MetaMask Flask is
 still a human's job, because MetaMask's own RPC restrictions are the thing that
 put the viewing key in the Snap to begin with.
 
+It is laid out as a dashboard: a sidebar switching between **Place an order / Advance the batch / My order / What leaks**, with the
+contract's state pinned above the panels so it does not move when you do. The
+panels are alternatives rather than steps, and in a single column the answer sat
+below the question — you scrolled past what you came to read to reach what you
+came to do. Below 900px the rail becomes a scrollable strip of tabs, because a
+232px sidebar on a 375px screen leaves no room for the thing it navigates.
+
 ### The design claims are tested, not asserted
 
 This README used to say the UI passes contrast, keeps focus rings, uses 44px

@@ -11,6 +11,7 @@ import {
 import { encryptOrder, publicDecryptHandle, decryptMine } from '../../lib/nox';
 import { connectSnap, getNoxAddress } from '../../lib/snap';
 import Link from 'next/link';
+import { Shell } from '../Shell';
 
 /// A deadline is only useful as a distance. "8/5/2026, 10:24:48 AM" makes you do
 /// arithmetic before you know whether the book is still open; "4d 6h" does not.
@@ -51,6 +52,7 @@ export default function Home() {
   const [sealMode, setSealMode] = useState<'snap' | 'page'>();
   const [myOrderId, setMyOrderId] = useState('0');
   const [mine, setMine] = useState('');
+  const [view, setView] = useState('trade');
 
   const track = (label: string) => (hash: `0x${string}`) =>
     setHashes((h) => [...h, { label, hash }]);
@@ -349,23 +351,7 @@ export default function Home() {
 
   const open = b && b.phase === 0 && Date.now() / 1000 <= b.deadline;
 
-  return (
-    <main className="wrap" style={{ paddingTop: 'var(--s6)', paddingBottom: 'var(--s8)' }}>
-      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 'var(--s5)' }}>
-        <Link href="/" className="mono dim" style={{ textDecoration: 'none' }}>← Lebur</Link>
-        <span className="pill">Ethereum Sepolia</span>
-      </div>
-      <h2 style={{ marginBottom: 'var(--s3)' }}>Sealed order book</h2>
-      <p className="dim narrow" style={{ fontSize: '0.95rem' }}>
-        A confidential uniform-price batch auction. Sealed orders net against each
-        other inside a TEE; only the clearing price and the aggregate residual ever
-        reach the public chain, where they settle in one trade against an{' '}
-        <a href={explorerAddr(ADDRESSES.pool)} target="_blank" rel="noreferrer">unmodified Curve pool</a>.
-      </p>
-
-      {/* State before actions: what the contract currently thinks, in one line,
-          so nothing below can offer a step the batch is not ready for without
-          the contradiction being visible. */}
+  const statsStrip = (
       <dl className="stats">
         <div>
           <dt>Phase</dt>
@@ -388,10 +374,29 @@ export default function Home() {
           </dd>
         </div>
       </dl>
+  );
 
-      {/* Only what the strip above does NOT already say. Repeating phase, order
-          count and deadline in a second card made the page look like two
-          different readings of the same contract. */}
+  return (
+    <Shell
+      brand="Lebur"
+      tagline="confidential batch auction"
+      chainLabel="Ethereum Sepolia · unmodified Curve"
+      address={ADDRESSES.batch}
+      explorer={explorerAddr}
+      stats={statsStrip}
+      view={view}
+      onView={setView}
+      views={[
+        { id: 'trade', label: 'Place an order', disabled: !open,
+          hint: !open ? 'the submit window is closed' : undefined },
+        { id: 'lifecycle', label: 'Advance the batch' },
+        { id: 'order', label: 'My order', disabled: !b || b.orders === 0n },
+        { id: 'about', label: 'What leaks' },
+      ]}
+    >
+      {view === 'trade' && (
+      <>
+
       <p className="dim" style={{ fontSize: '0.9rem', marginBottom: 'var(--s5)' }}>
         Price ladder{' '}
         <span className="mono">
@@ -401,21 +406,6 @@ export default function Home() {
         discovery is what a uniform-price auction is for. What stays secret is where
         on it each order sits, and how big it is.
       </p>
-
-      {b && b.phase >= 1 && (
-        <section className="card">
-          <b>Cleared</b>
-          <ul style={{ margin: '8px 0 0', paddingLeft: 18, lineHeight: 1.7 }}>
-            <li>clearing tick <b>{String(b.tick)}</b> at price <b>{b.price ? (Number(b.price) / 1e18).toFixed(4) : '—'}</b></li>
-            <li>residual to the public pool: {formatEther(b.resid0 ?? 0n)} / {formatEther(b.resid1 ?? 0n)}</li>
-            <li>Curve leg used: <b>{b.poolUsed ? 'yes' : 'no'}</b>{b.poolUsed && b.poolOut ? ` — received ${formatEther(b.poolOut)}` : ''}</li>
-          </ul>
-          <p className="dim" style={{ fontSize: '0.85rem', marginBottom: 0 }}>
-            Everything else — every order&apos;s size, side, limit and fill — stays
-            encrypted forever.
-          </p>
-        </section>
-      )}
 
       <section className="card">
         <b>Place a sealed order</b>
@@ -467,8 +457,33 @@ export default function Home() {
           </p>
         )}
       </section>
+      </>
+      )}
 
-      {b?.phase === 1 && (
+      {view === 'lifecycle' && (
+      <>
+        <h2 style={{ marginBottom: 'var(--s3)' }}>Advance the batch</h2>
+        <p className="dim" style={{ fontSize: '0.95rem' }}>
+          Every step below is permissionless on-chain. There is no operator in this
+          system, so nobody can strand your escrow by going quiet — and nothing here
+          is offered unless the batch is actually ready for it.
+        </p>
+
+        {b && b.phase >= 1 && (
+        <section className="card">
+          <b>Cleared</b>
+          <ul style={{ margin: '8px 0 0', paddingLeft: 18, lineHeight: 1.7 }}>
+            <li>clearing tick <b>{String(b.tick)}</b> at price <b>{b.price ? (Number(b.price) / 1e18).toFixed(4) : '—'}</b></li>
+            <li>residual to the public pool: {formatEther(b.resid0 ?? 0n)} / {formatEther(b.resid1 ?? 0n)}</li>
+            <li>Curve leg used: <b>{b.poolUsed ? 'yes' : 'no'}</b>{b.poolUsed && b.poolOut ? ` — received ${formatEther(b.poolOut)}` : ''}</li>
+          </ul>
+          <p className="dim" style={{ fontSize: '0.85rem', marginBottom: 0 }}>
+            Everything else — every order&apos;s size, side, limit and fill — stays
+            encrypted forever.
+          </p>
+        </section>
+        )}
+        {b?.phase === 1 && (
         <section className="card">
           <b>Settle the batch — anyone can do this</b>
           <p className="dim" style={{ fontSize: '0.85rem', margin: '6px 0 10px' }}>
@@ -483,26 +498,8 @@ export default function Home() {
             {busy ? 'working…' : 'Reveal and settle'}
           </button>
         </section>
-      )}
-
-      {b && b.orders > 0n && (
-        <section className="card">
-          <b>Read your own order back</b>
-          <p className="dim" style={{ fontSize: '0.85rem', margin: '6px 0 10px' }}>
-            Gasless, and gated by the viewer role granted when the order was sealed:
-            it works for your orders and fails for everyone else&apos;s. The size sits
-            on-chain the entire time — what makes it private is that only you can turn
-            it into a number.
-          </p>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <label>order id <input size={4} value={myOrderId} onChange={(e) => setMyOrderId(e.target.value)} /></label>
-            <button disabled={busy} onClick={() => run(decryptMyOrder)}>Decrypt my order</button>
-          </div>
-          {mine && <p style={{ marginTop: 10, fontSize: 14 }}><b>{mine}</b></p>}
-        </section>
-      )}
-
-      {b?.phase === 2 && b.unpaid !== undefined && (
+        )}
+        {b?.phase === 2 && b.unpaid !== undefined && (
         <section className="card">
           <b>Collect the fills — anyone can push any order&apos;s payout</b>
           <p className="dim" style={{ fontSize: '0.85rem', margin: '6px 0 10px' }}>
@@ -519,9 +516,8 @@ export default function Home() {
             {busy ? 'working…' : `Pay out ${b.unpaid.length || 'all'} order${b.unpaid.length === 1 ? '' : 's'}`}
           </button>
         </section>
-      )}
-
-      {b?.phase === 2 && b.resettable && (
+        )}
+        {b?.phase === 2 && b.resettable && (
         <section className="card">
           <b>One deployment, many auctions — anyone can start the next one</b>
           <p className="dim" style={{ fontSize: '0.85rem', margin: '6px 0 10px' }}>
@@ -541,7 +537,75 @@ export default function Home() {
             </span>
           )}
         </section>
+        )}
+      </>
       )}
+
+      {view === 'order' && (
+      <>
+
+        {b && b.orders > 0n && (
+        <section className="card">
+          <b>Read your own order back</b>
+          <p className="dim" style={{ fontSize: '0.85rem', margin: '6px 0 10px' }}>
+            Gasless, and gated by the viewer role granted when the order was sealed:
+            it works for your orders and fails for everyone else&apos;s. The size sits
+            on-chain the entire time — what makes it private is that only you can turn
+            it into a number.
+          </p>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <label>order id <input size={4} value={myOrderId} onChange={(e) => setMyOrderId(e.target.value)} /></label>
+            <button disabled={busy} onClick={() => run(decryptMyOrder)}>Decrypt my order</button>
+          </div>
+          {mine && <p style={{ marginTop: 10, fontSize: 14 }}><b>{mine}</b></p>}
+        </section>
+        )}
+      </>
+      )}
+
+      {view === 'about' && (
+        <>
+          <h2 style={{ marginBottom: 'var(--s3)' }}>What leaks, and what does not</h2>
+          <div className="card">
+            <h3>Public, by necessity</h3>
+            <p className="dim" style={{ marginBottom: 0, fontSize: '0.92rem' }}>
+              The clearing price and the aggregate residual. A public pool has to see what
+              it is being asked to trade, so claiming otherwise would be a lie. Three
+              numbers leave the enclave per batch, and nothing else ever does.
+            </p>
+          </div>
+          <div className="card">
+            <h3>Encrypted, forever</h3>
+            <p className="dim" style={{ marginBottom: 0, fontSize: '0.92rem' }}>
+              Every order&apos;s size, side, limit and fill. The price ladder is public
+              because it is the auction&apos;s grammar; where on it each order sits is not.
+            </p>
+          </div>
+          <div className="card">
+            <h3>Two things that do leak</h3>
+            <p className="dim" style={{ marginBottom: 0, fontSize: '0.92rem' }}>
+              The residual&apos;s <strong>side</strong> is public by construction —
+              publishing &ldquo;net long 400&rdquo; tells you demand was heavy. And a trader
+              who has never held both coins reveals their side, because ERC-7984 reverts on a
+              transfer from an uninitialised balance, so the pull for a coin you have never
+              held is skipped in plaintext. This page wraps a dust amount of the other coin
+              for exactly that reason.
+            </p>
+          </div>
+          <div className="card">
+            <h3><Lock /> The Snap holds the viewing key, not the encryption</h3>
+            <p className="dim" style={{ marginBottom: 0, fontSize: '0.92rem' }}>
+              <span className="mono">Nox.fromExternal</span> requires the owner of an input
+              proof to be the transaction&apos;s direct sender, so only your EOA can encrypt
+              an order it is about to submit. What the Snap owns is the key that reads it
+              back: SRP-derived, never leaving the sandbox, unable to sign a proof of what
+              you traded. Do not believe any claim that the size never enters this page — it
+              cannot be true of a wallet-signed transaction.
+            </p>
+          </div>
+        </>
+      )}
+
 
       {status && <p className="dim row" style={{ fontSize: '0.9rem' }}>{busy && <Spinner />}{status}</p>}
       {error && (
@@ -563,6 +627,6 @@ export default function Home() {
           ))}
         </ul>
       )}
-    </main>
+    </Shell>
   );
 }

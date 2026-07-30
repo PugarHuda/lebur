@@ -16,6 +16,17 @@ import { test, expect, type Page } from '@playwright/test';
 
 const BASE = process.env.BASE ?? 'https://lebur.vercel.app';
 
+/// The app is a dashboard: panels live behind sidebar nav rather than one long
+/// scroll, so a test that wants a panel has to open it the way a visitor would.
+/// Waiting for aria-current to move proves the switch took — React may not have
+/// hydrated when the click lands, and then nothing happens and the assertion
+/// after it fails much later against the wrong panel.
+async function open(page: Page, label: string) {
+  const item = page.locator('nav.sidenav').getByRole('button', { name: label });
+  await item.click();
+  await expect(item).toHaveAttribute('aria-current', 'page', { timeout: 30_000 });
+}
+
 /// An unhandled rejection leaves the UI merely looking empty. Treat it as a
 /// failure, because a silent one is how a broken read reaches a judge.
 function watchForCrashes(page: Page) {
@@ -76,9 +87,11 @@ test('offers exactly the lifecycle step the batch is actually ready for', async 
     await expect(payout).toHaveCount(0);
   } else if (phase === 'Cleared') {
     await expect(submit).toBeDisabled();
+    await open(page, 'Advance the batch');
     await expect(settle).toBeVisible(); // three gateway proofs, anyone may supply them
   } else {
     await expect(submit).toBeDisabled();
+    await open(page, 'Advance the batch');
     await expect(payout).toBeVisible(); // fills are collected here, not from a script
     await expect(page.getByText(/This batch is/)).toContainText(/settled/);
   }
@@ -107,11 +120,12 @@ test('lets a trader read their own order back, and only their own', async ({ pag
   await expect(status).toContainText(/Sealed orders/i, { timeout: 30_000 });
   const orders = Number((await status.textContent())!.match(/Sealed orders\s*(\d+)/i)![1]);
 
-  const panel = page.getByText('Read your own order back');
-  // With an empty book there is nothing to read, and offering the control anyway
-  // would just be a button that fails.
-  if (orders === 0) await expect(panel).toHaveCount(0);
-  else await expect(panel).toBeVisible();
+  // With an empty book the nav item is disabled, because offering a panel that
+  // has nothing to read is just a button that fails.
+  const item = page.locator('nav.sidenav').getByRole('button', { name: 'My order' });
+  if (orders === 0) { await expect(item).toBeDisabled(); return; }
+  await open(page, 'My order');
+  await expect(page.getByText('Read your own order back')).toBeVisible();
 });
 
 test('the landing page stands on its own, and its numbers come from chain', async ({ page }) => {

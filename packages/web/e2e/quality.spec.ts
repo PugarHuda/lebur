@@ -18,9 +18,17 @@ const BASE = process.env.BASE ?? 'https://lebur.vercel.app';
 const scan = (page: Page) =>
   new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
 
-for (const [name, path] of [['landing', '/'], ['app', '/app']] as const) {
+for (const [name, path, view] of [
+  ['landing', '/', null],
+  ['app: trade', '/app', null],
+  // Panels behind nav would otherwise never be scanned at all, which is how an
+  // audit passes while a whole view is unusable.
+  ['app: lifecycle', '/app', 'Advance the batch'],
+  ['app: what leaks', '/app', 'What leaks'],
+] as const) {
   test(`${name}: no accessibility violations`, async ({ page }) => {
     await page.goto(BASE + path, { waitUntil: 'networkidle' });
+    if (view) await page.locator('nav.sidenav').getByRole('button', { name: view }).click();
     // Chain reads populate the page; scanning before they land tests a skeleton.
     await page.waitForTimeout(3000);
     const { violations } = await scan(page);

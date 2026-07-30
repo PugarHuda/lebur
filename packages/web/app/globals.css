@@ -153,6 +153,62 @@ td.num { text-align: right; font-family: var(--font-mono); font-variant-numeric:
 .steps li:first-child { border-top: 0; }
 
 
+
+/* ── dashboard shell ──────────────────────────────────────────────────── */
+/* Sidebar + main. The app has four things you can do and a state that must stay
+   visible while you do any of them; stacking those vertically meant scrolling
+   past the answer to reach the question. */
+.shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+/* Grid children default to min-width:auto, so they refuse to shrink below their
+   content's min-content width and push the whole document wider than the
+   viewport. At 375px that made the shell 431px and the entire page scrolled
+   sideways -- with the media query below applying correctly the whole time. */
+.shell > * { min-width: 0; }
+
+.side {
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  padding: var(--s5) var(--s4);
+  position: sticky; top: 0; height: 100vh;
+  display: flex; flex-direction: column; gap: var(--s5);
+}
+.side .brand { font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; color: var(--fg); }
+.side .brand small { display: block; font-family: var(--font-body); font-weight: 400;
+                     font-size: 0.75rem; color: var(--fg-dim); letter-spacing: 0.04em; }
+
+.sidenav { display: flex; flex-direction: column; gap: 2px; }
+.sidenav button {
+  /* A nav item is not a call to action; it must not compete with the button
+     that actually spends gas. */
+  background: transparent; color: var(--fg-muted); border: 0;
+  text-align: left; padding: 10px var(--s3); border-radius: var(--r);
+  font-size: 0.92rem; min-height: 44px; width: 100%;
+}
+.sidenav button:hover:not(:disabled) { background: var(--surface-2); color: var(--fg); }
+.sidenav button[aria-current='page'] {
+  background: var(--accent-wash); color: var(--accent); font-weight: 500;
+}
+.sidenav button:disabled { background: transparent; color: var(--fg-dim); opacity: 0.5; }
+
+.side-foot { margin-top: auto; font-size: 0.78rem; color: var(--fg-dim); line-height: 1.7; }
+.side-foot a { color: var(--fg-muted); }
+
+.main { padding: var(--s6) var(--s7); max-width: 860px; }
+
+/* Below this the sidebar stops being a sidebar and becomes a scrollable strip of
+   tabs. A 232px rail on a 375px screen leaves no room for the thing it navigates. */
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; }
+  .side {
+    position: static; height: auto; border-right: 0;
+    border-bottom: 1px solid var(--border); gap: var(--s3);
+  }
+  .sidenav { flex-direction: row; overflow-x: auto; gap: var(--s2); }
+  .sidenav button { width: auto; white-space: nowrap; }
+  .side-foot { display: none; }
+  .main { padding: var(--s5) var(--s4); }
+}
+
 /* ── dashboard strip ──────────────────────────────────────────────────── */
 /* At-a-glance state above the actions. A dApp page that opens with a form
    makes you hunt for what the contract currently thinks; this puts the four
