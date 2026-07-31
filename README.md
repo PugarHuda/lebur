@@ -611,7 +611,7 @@ peer dependency, a viem default RPC that is dead, an ABI that no longer decodes 
 deployed contract. All three have happened in this project and none was caught
 before the page was opened.
 
-Four tests, no wallet: that phase, order count, deadline and the price ladder
+Five tests, no wallet: that phase, order count, deadline and the price ladder
 really come back from Sepolia through Multicall3; that the page offers exactly the
 lifecycle step the batch is ready for and never the one that would revert; that
 `publicFootprint` is read only once it exists, since it reverts `WrongPhase`
