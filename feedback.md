@@ -125,7 +125,57 @@ overflow-free.
 save every developer this detour. Failing that, the packing trick is worth a page in
 the docs — it generalises to any lexicographic comparison.
 
-## 5. Smaller things
+## 5. The Snap trap: `fromExternal` and `BLOCKED_RPC_METHODS` collide silently
+
+This cost us the worst bug in the project, and it shipped. We are describing it in
+full because the two facts that cause it are each documented correctly, in
+isolation, and nothing anywhere warns that together they make the obvious design
+impossible.
+
+`eth_signTypedData_v4` is on MetaMask's `BLOCKED_RPC_METHODS` for Snaps. The Handle
+SDK needs typed-data signing for gateway auth. So the natural conclusion — and the
+one we drew — is to give the Snap its own identity derived from `snap_getEntropy`,
+and have it encrypt the user's order inside the SES sandbox. That is a genuinely
+attractive design: the plaintext never enters page JavaScript at all.
+
+It cannot work. `Nox.fromExternal` requires the address that OWNS an input proof to
+be the **direct `msg.sender`** of the transaction consuming it. The Snap encrypts
+with its own key; the transaction is sent by the user's EOA; `fromExternal` rejects
+it with `InvalidProof`, every time, forever.
+
+What makes this severe rather than merely annoying is how it fails. Our page
+*preferred* the Snap when it was installed — so **installing the Snap turned a
+working trader into a broken one**, which is precisely the opposite of what it
+advertised. And nothing caught it: the Snap compiled, passed `mm-snap eval` under
+SES, and no test touched it, because a Snap that has never been loaded in a wallet
+is a Snap that has never been executed. "Builds clean" and "works" were two
+different things and we had only checked the first.
+
+The correct architecture is the inverse of the intuitive one: the **EOA encrypts**,
+because it is the only key that can satisfy `fromExternal`, and the Snap holds the
+**viewing key** — SRP-derived, never leaving the sandbox, unable to sign a proof of
+what you traded. That half is what carries coercion resistance, and it is the half
+worth having.
+
+One claim narrows as a result, and we now state it in both READMEs: *"the size never
+enters page JavaScript"* is an over-claim for any wallet-signed transaction, and
+`fromExternal`'s binding rules it out.
+
+**What would have prevented this:** one sentence in the Snap guidance saying that
+`fromExternal` inputs must be encrypted by the transaction sender, so a Snap
+identity can hold the viewer role but never the encryptor role. It is a two-line
+doc change that removes an entire class of silently-broken integration.
+
+Related, and found the same way: **`unwrap()` returns a FRESH handle as its request
+id**, not the amount handle you passed in. `_burn` mints a new one, and that is what
+gets `allowPublicDecryption` and what `finalizeUnwrap` expects. A contract reads it
+from the return value; an off-chain caller cannot, so the only way to obtain it is
+the `UnwrapRequested` event. Passing the handle you supplied fails with *"does not
+exist or is not publicly decryptable"* — which reads exactly like Runner lag and is
+not. The interface comment says the id "is the amount handle returned by `unwrap`";
+the word doing the work there is *returned*, and it is easy to read as *supplied*.
+
+## 6. Smaller things
 
 - **`div` by zero saturating to MAX** is the correct choice given that reverting would
   leak, but it is *silently* catastrophic: a batch with no eligible bidders would have
@@ -158,7 +208,7 @@ the docs — it generalises to any lexicographic comparison.
   protocols that are *actually* deployed there would remove a full day of RPC
   archaeology per team.
 
-## 6. The one thing we would ask for first
+## 7. The one thing we would ask for first
 
 If only one item on this list can be picked up: **fix the shared compose project name
 and the hard-coded port** (§1). Everything else here cost us thought; that one cost us
