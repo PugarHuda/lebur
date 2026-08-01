@@ -469,7 +469,7 @@ holds its result in readable state:
 |---|---|
 | clearing tick | **2** (price 1.0005) |
 | residual to the public pool | **399.7 lUSDA** / 0 lUSDB |
-| Curve leg | used — received **399.620286334689100000 lUSDB** |
+| Curve leg | used — received **399.620286334689176362 lUSDB** |
 | `publicFootprint` | **399.7** |
 | paid / orders | 2 / 2 · no plaintext coin stranded |
 
